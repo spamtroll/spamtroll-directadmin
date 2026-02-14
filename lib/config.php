@@ -20,6 +20,8 @@ class SpamtrollConfig
         'api_url' => 'https://api.spamtroll.io/api/v1/scan/check',
         'log_level' => 'info',
         'timeout' => 5,
+        'whitelist' => '',
+        'blacklist' => '',
     ];
 
     /**
@@ -47,6 +49,8 @@ class SpamtrollConfig
             'api_url' => '/^API_URL="([^"]*)"$/m',
             'log_level' => '/^LOG_LEVEL="([^"]*)"$/m',
             'timeout' => '/^TIMEOUT=(\d+)/m',
+            'whitelist' => '/^WHITELIST="([^"]*)"$/m',
+            'blacklist' => '/^BLACKLIST="([^"]*)"$/m',
         ];
 
         foreach ($patterns as $key => $pattern) {
@@ -89,6 +93,8 @@ API_KEY="{$config['api_key']}"
 API_URL="{$config['api_url']}"
 LOG_LEVEL="{$config['log_level']}"
 TIMEOUT={$config['timeout']}
+WHITELIST="{$config['whitelist']}"
+BLACKLIST="{$config['blacklist']}"
 EOF;
 
         // Ensure directory exists
@@ -216,5 +222,32 @@ EOF;
     {
         // API key should be alphanumeric, at least 20 characters
         return preg_match('/^[a-zA-Z0-9_-]{20,}$/', $apiKey) === 1;
+    }
+
+    /**
+     * Validate a comma-separated list of emails/domains
+     *
+     * @param string $list Comma-separated list
+     * @return bool True if all entries are valid emails or domains
+     */
+    public static function validateList(string $list): bool
+    {
+        if (trim($list) === '') {
+            return true;
+        }
+
+        $entries = array_map('trim', explode(',', $list));
+        foreach ($entries as $entry) {
+            if ($entry === '') {
+                continue;
+            }
+            // Valid: user@example.com or example.com or @example.com
+            if (!preg_match('/^@?[a-zA-Z0-9._-]+(\.[a-zA-Z]{2,})+$/', $entry)
+                && !preg_match('/^[a-zA-Z0-9._+-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$/', $entry)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

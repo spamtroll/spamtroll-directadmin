@@ -61,11 +61,25 @@ if ($requestMethod === 'POST') {
                 'api_url' => trim($_POST['api_url'] ?? $config['api_url']),
                 'log_level' => $_POST['log_level'] ?? 'info',
                 'timeout' => (int)($_POST['timeout'] ?? 5),
+                'whitelist' => trim($_POST['whitelist'] ?? ''),
+                'blacklist' => trim($_POST['blacklist'] ?? ''),
             ];
 
             // Validate API key format if provided
             if (!empty($newConfig['api_key']) && !SpamtrollConfig::validateApiKey($newConfig['api_key'])) {
                 $message = 'Invalid API key format. Must be at least 20 alphanumeric characters.';
+                $messageType = 'error';
+                break;
+            }
+
+            if (!SpamtrollConfig::validateList($newConfig['whitelist'])) {
+                $message = 'Invalid whitelist format. Use comma-separated emails or domains.';
+                $messageType = 'error';
+                break;
+            }
+
+            if (!SpamtrollConfig::validateList($newConfig['blacklist'])) {
+                $message = 'Invalid blacklist format. Use comma-separated emails or domains.';
                 $messageType = 'error';
                 break;
             }
@@ -681,6 +695,23 @@ if ($action === 'logs') {
                         <div class="form-group">
                             <label for="timeout">API Timeout (seconds)</label>
                             <input type="number" id="timeout" name="timeout" value="<?= $config['timeout'] ?>" min="1" max="30">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-6">
+                        <div class="form-group">
+                            <label for="whitelist">Whitelist</label>
+                            <textarea id="whitelist" name="whitelist" rows="3" style="width: 100%; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical;"><?= htmlspecialchars($config['whitelist']) ?></textarea>
+                            <p class="help">Comma-separated emails or domains to always allow (e.g. trusted@example.com, example.org)</p>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-group">
+                            <label for="blacklist">Blacklist</label>
+                            <textarea id="blacklist" name="blacklist" rows="3" style="width: 100%; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical;"><?= htmlspecialchars($config['blacklist']) ?></textarea>
+                            <p class="help">Comma-separated emails or domains to always block (e.g. spammer@evil.com, spam.org)</p>
                         </div>
                     </div>
                 </div>

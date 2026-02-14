@@ -19,6 +19,8 @@ ENABLED="false"
 API_KEY=""
 API_URL="https://api.spamtroll.io/api/v1/scan/check"
 LOG_LEVEL="info"  # debug, info, error
+WHITELIST=""
+BLACKLIST=""
 
 # Parse command line arguments
 SENDER_IP="${1:-}"
@@ -61,6 +63,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
             API_URL)   API_URL="$value" ;;
             LOG_LEVEL) LOG_LEVEL="$value" ;;
             TIMEOUT)   TIMEOUT="$value" ;;
+            WHITELIST) WHITELIST="$value" ;;
+            BLACKLIST) BLACKLIST="$value" ;;
         esac
     done < "$CONFIG_FILE"
 fi
@@ -68,6 +72,36 @@ fi
 # Check if plugin is enabled
 if [[ "$ENABLED" != "true" ]] || [[ -z "$API_KEY" ]]; then
     exit 0  # Not configured, allow email
+fi
+
+# Check whitelist (has priority — fail-open)
+if [[ -n "$WHITELIST" && -n "$SENDER_EMAIL" ]]; then
+    SENDER_DOMAIN="${SENDER_EMAIL##*@}"
+    IFS=',' read -ra WL_ENTRIES <<< "$WHITELIST"
+    for entry in "${WL_ENTRIES[@]}"; do
+        entry="${entry## }"
+        entry="${entry%% }"
+        [[ -z "$entry" ]] && continue
+        if [[ "${SENDER_EMAIL,,}" == "${entry,,}" ]] || [[ "${SENDER_DOMAIN,,}" == "${entry,,}" ]] || [[ "@${SENDER_DOMAIN,,}" == "${entry,,}" ]]; then
+            log "info" "from=${SENDER_EMAIL} ip=${SENDER_IP} status=safe reason=whitelist match=${entry}"
+            exit 0
+        fi
+    done
+fi
+
+# Check blacklist
+if [[ -n "$BLACKLIST" && -n "$SENDER_EMAIL" ]]; then
+    SENDER_DOMAIN="${SENDER_DOMAIN:-${SENDER_EMAIL##*@}}"
+    IFS=',' read -ra BL_ENTRIES <<< "$BLACKLIST"
+    for entry in "${BL_ENTRIES[@]}"; do
+        entry="${entry## }"
+        entry="${entry%% }"
+        [[ -z "$entry" ]] && continue
+        if [[ "${SENDER_EMAIL,,}" == "${entry,,}" ]] || [[ "${SENDER_DOMAIN,,}" == "${entry,,}" ]] || [[ "@${SENDER_DOMAIN,,}" == "${entry,,}" ]]; then
+            log "info" "from=${SENDER_EMAIL} ip=${SENDER_IP} status=blocked reason=blacklist match=${entry}"
+            exit 1
+        fi
+    done
 fi
 
 # Truncate body if too large
