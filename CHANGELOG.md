@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **W6**: Pluggable menu support for DirectAdmin Evolution skin (images/menu.json)
 - **W7**: Added version_url to plugin.conf for automatic update checking
 - **M4**: Added logrotate configuration for /var/log/spamtroll.log
+- Hourly activity bar chart on Dashboard (24h, safe/blocked breakdown)
+- Whitelist/blacklist functionality — bypass or block emails by sender/domain
+- Manual email content test from admin panel Settings
+- API usage/quota display after successful connection test
+- CSV export of statistics from Dashboard
+- Log filtering by text search and status (All/Blocked/Safe/Error)
+- Auto-refresh for log viewer (10s interval, state persisted in URL)
+- Button loading states with "Processing..." feedback
+- Confirmation dialog when disabling spam filtering
 
 ### Fixed
 - **K1**: Added CSRF token protection to admin panel forms (DirectAdmin requirement)
@@ -27,15 +36,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **W10**: Added body size limit in Exim ACL configuration
 - **M3**: Fixed regex patterns for parsing quoted config values
 - **M5**: Added API key format validation on save
+- Server-side CSRF token validation (was only in forms, not verified on POST)
+- Logrotate config now installed/removed/updated by lifecycle scripts
+- SpamtrollAPI CGI compatibility ($_SERVER → getenv for REMOTE_ADDR)
 
 ### Changed
 - Config file location: /etc/spamtroll.conf → plugin/data/spamtroll.conf
 - Config permissions: 600 root:root → 660 diradmin:diradmin
 - Log file permissions: 644 → 640 root:diradmin
 - Build script excludes dev files and unused assets from distribution
+- Recent Activity shows 25 entries (was 10)
+- System Information shows file size, permissions, and modification date
+- SpamtrollAPI reactivated for email testing and usage checks
 
 ### Removed
-- **M1**: Marked unused SpamtrollAPI class as deprecated (kept for future use)
+- Orphan WordPress uninstall.php (referenced $wpdb, WP_UNINSTALL_PLUGIN)
+- Dead JavaScript for CSRF token fetch (guard always exited early)
 - Removed DA-managed fields from plugin.conf (installed, *_script)
 
 ## [0.1.0] - 2026-02-04
