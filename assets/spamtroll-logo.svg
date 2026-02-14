@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" fill="none">
+  <!-- Shield icon -->
+  <path d="M25 5L5 12v13c0 11 8.5 21.3 20 24 11.5-2.7 20-13 20-24V12L25 5z" fill="#2563eb"/>
+  <path d="M18 25l5 5 9-9" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Text -->
+  <text x="55" y="35" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1f2937">
+    Spamtroll
+  </text>
+</svg>

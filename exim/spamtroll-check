@@ -1,0 +1,143 @@
+#!/bin/bash
+# Spamtroll spam check script for Exim
+# Called by Exim ACL to check incoming emails
+#
+# Usage: spamtroll-check <sender_ip> <sender_email> <from_header> <to_header> <subject> <message_id> <body>
+#
+# Exit codes:
+#   0 = safe (accept email)
+#   1 = blocked (reject email)
+#   2 = error (accept email - fail open)
+
+CONFIG_FILE="/usr/local/directadmin/plugins/spamtroll/data/spamtroll.conf"
+LOG_FILE="/var/log/spamtroll.log"
+TIMEOUT=5
+MAX_BODY_SIZE=50000  # 50KB limit for body in API call
+
+# Default config values
+ENABLED="false"
+API_KEY=""
+API_URL="https://api.spamtroll.io/api/v1/scan/check"
+LOG_LEVEL="info"  # debug, info, error
+
+# Parse command line arguments
+SENDER_IP="${1:-}"
+SENDER_EMAIL="${2:-}"
+FROM_HEADER="${3:-}"
+TO_HEADER="${4:-}"
+SUBJECT="${5:-}"
+MESSAGE_ID="${6:-}"
+MESSAGE_BODY="${7:-}"
+
+# Logging function
+log() {
+    local level="$1"
+    local message="$2"
+
+    case "$LOG_LEVEL" in
+        debug) ;;
+        info)  [[ "$level" == "debug" ]] && return ;;
+        error) [[ "$level" != "error" ]] && return ;;
+    esac
+
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$level] $message" >> "$LOG_FILE" 2>/dev/null
+}
+
+# Load configuration (safe parsing - no source/eval)
+if [[ -f "$CONFIG_FILE" ]]; then
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$key" ]] && continue
+        # Remove quotes and whitespace
+        key="${key// /}"
+        value="${value#\"}"
+        value="${value%\"}"
+        value="${value#\'}"
+        value="${value%\'}"
+        case "$key" in
+            ENABLED)   ENABLED="$value" ;;
+            API_KEY)   API_KEY="$value" ;;
+            API_URL)   API_URL="$value" ;;
+            LOG_LEVEL) LOG_LEVEL="$value" ;;
+            TIMEOUT)   TIMEOUT="$value" ;;
+        esac
+    done < "$CONFIG_FILE"
+fi
+
+# Check if plugin is enabled
+if [[ "$ENABLED" != "true" ]] || [[ -z "$API_KEY" ]]; then
+    exit 0  # Not configured, allow email
+fi
+
+# Truncate body if too large
+if [[ ${#MESSAGE_BODY} -gt $MAX_BODY_SIZE ]]; then
+    MESSAGE_BODY="${MESSAGE_BODY:0:$MAX_BODY_SIZE}"
+    log "debug" "Body truncated to $MAX_BODY_SIZE bytes"
+fi
+
+# Build content for classification (subject + body)
+CONTENT="Subject: ${SUBJECT}
+
+${MESSAGE_BODY}"
+
+log "debug" "Checking email from=${SENDER_EMAIL} ip=${SENDER_IP} subject=\"${SUBJECT:0:50}\""
+
+# Build JSON payload using jq for proper escaping
+PAYLOAD=$(jq -n \
+    --arg content "$CONTENT" \
+    --arg source "email" \
+    --arg ip "$SENDER_IP" \
+    --arg email "$SENDER_EMAIL" \
+    --arg from "$FROM_HEADER" \
+    --arg to "$TO_HEADER" \
+    --arg subject "$SUBJECT" \
+    --arg message_id "$MESSAGE_ID" \
+    '{
+        content: $content,
+        source: $source,
+        ip_address: $ip,
+        email: $email,
+        email_headers: {
+            from: $from,
+            to: $to,
+            subject: $subject,
+            message_id: $message_id
+        }
+    }' 2>/dev/null)
+
+if [[ -z "$PAYLOAD" ]]; then
+    log "error" "Failed to build JSON payload"
+    exit 0  # Fail open
+fi
+
+# Call API
+RESPONSE=$(curl -s -m "$TIMEOUT" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: $API_KEY" \
+    -d "$PAYLOAD" \
+    "$API_URL" 2>/dev/null)
+
+CURL_EXIT=$?
+if [[ $CURL_EXIT -ne 0 ]]; then
+    log "error" "API call failed: curl exit=$CURL_EXIT"
+    exit 0  # Fail open
+fi
+
+# Parse response
+STATUS=$(echo "$RESPONSE" | jq -r '.status // "safe"' 2>/dev/null)
+SCORE=$(echo "$RESPONSE" | jq -r '.spam_score // 0' 2>/dev/null)
+
+# Handle empty/null values
+[[ -z "$STATUS" || "$STATUS" == "null" ]] && STATUS="safe"
+[[ -z "$SCORE" || "$SCORE" == "null" ]] && SCORE="0"
+
+# Log result
+log "info" "from=${SENDER_EMAIL} ip=${SENDER_IP} status=${STATUS} score=${SCORE}"
+
+# Return based on status
+if [[ "$STATUS" == "blocked" ]]; then
+    exit 1  # Reject email
+fi
+
+exit 0  # Accept email

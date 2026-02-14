@@ -1,0 +1,679 @@
+#!/usr/local/bin/php
+<?php
+/**
+ * Spamtroll DirectAdmin Admin Panel
+ *
+ * Main entry point for the admin interface.
+ * This file is named .html but executed as PHP by DirectAdmin.
+ */
+
+// DirectAdmin plugin path
+define('PLUGIN_DIR', dirname(__DIR__));
+
+// Include libraries
+require_once PLUGIN_DIR . '/lib/config.php';
+require_once PLUGIN_DIR . '/lib/api.php';
+require_once PLUGIN_DIR . '/lib/stats.php';
+
+// DirectAdmin CGI environment — DA does not populate PHP superglobals
+parse_str(getenv('QUERY_STRING') ?: '', $_GET);
+
+$_POST = [];
+$requestMethod = getenv('REQUEST_METHOD') ?: 'GET';
+if ($requestMethod === 'POST') {
+    $postData = getenv('POST') ?: file_get_contents('php://input') ?: '';
+    parse_str($postData, $_POST);
+}
+
+$_COOKIE = [];
+$cookieStr = getenv('HTTP_COOKIE') ?: '';
+foreach (explode('; ', $cookieStr) as $pair) {
+    if (strpos($pair, '=') !== false) {
+        [$name, $value] = explode('=', $pair, 2);
+        $_COOKIE[trim($name)] = urldecode(trim($value));
+    }
+}
+
+// CSRF token from DirectAdmin session
+$csrfToken = $_COOKIE['csrftoken'] ?? '';
+
+// Get action from request
+$action = $_GET['action'] ?? 'dashboard';
+
+// Load current configuration
+$config = SpamtrollConfig::load();
+
+// Process POST requests
+$message = '';
+$messageType = '';
+
+if ($requestMethod === 'POST') {
+    switch ($action) {
+        case 'save':
+            $newConfig = [
+                'enabled' => isset($_POST['enabled']) && $_POST['enabled'] === '1',
+                'api_key' => trim($_POST['api_key'] ?? ''),
+                'api_url' => trim($_POST['api_url'] ?? $config['api_url']),
+                'log_level' => $_POST['log_level'] ?? 'info',
+                'timeout' => (int)($_POST['timeout'] ?? 5),
+            ];
+
+            // Validate API key format if provided
+            if (!empty($newConfig['api_key']) && !SpamtrollConfig::validateApiKey($newConfig['api_key'])) {
+                $message = 'Invalid API key format. Must be at least 20 alphanumeric characters.';
+                $messageType = 'error';
+                break;
+            }
+
+            if (SpamtrollConfig::save($newConfig)) {
+                $config = $newConfig;
+                $message = 'Configuration saved successfully.';
+                $messageType = 'success';
+            } else {
+                $message = 'Failed to save configuration. Check file permissions.';
+                $messageType = 'error';
+            }
+            break;
+
+        case 'test':
+            $result = SpamtrollConfig::testConnection();
+            if ($result['success']) {
+                $message = 'Connection successful! API is reachable.';
+                $messageType = 'success';
+            } else {
+                $message = 'Connection failed: ' . ($result['error'] ?? 'Unknown error');
+                $messageType = 'error';
+            }
+            break;
+    }
+}
+
+// Get stats for dashboard
+$stats = [];
+if ($action === 'dashboard' || $action === 'stats') {
+    $statsManager = new SpamtrollStats();
+    $stats = $statsManager->getStats();
+}
+
+// Get logs if requested
+$logs = [];
+if ($action === 'logs') {
+    $statsManager = new SpamtrollStats();
+    $logs = $statsManager->getRecentLogs(200);
+}
+
+// Output HTML
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spamtroll Anti-Spam</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --success: #16a34a;
+            --danger: #dc2626;
+            --warning: #ca8a04;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-800);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header .logo {
+            width: 32px;
+            height: 32px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 8px;
+        }
+
+        .nav a {
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            color: var(--gray-600);
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .nav a:hover {
+            background: var(--gray-200);
+        }
+
+        .nav a.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--gray-700);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .stat-card .label {
+            font-size: 14px;
+            color: var(--gray-600);
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .stat-card.blocked .value { color: var(--danger); }
+        .stat-card.safe .value { color: var(--success); }
+        .stat-card.total .value { color: var(--primary); }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--gray-700);
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="password"],
+        .form-group input[type="number"],
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .form-group .help {
+            font-size: 12px;
+            color: var(--gray-600);
+            margin-top: 4px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-secondary {
+            background: var(--gray-200);
+            color: var(--gray-700);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-300);
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-enabled {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-disabled {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .log-viewer {
+            background: var(--gray-800);
+            color: #e5e7eb;
+            padding: 16px;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-line {
+            padding: 2px 0;
+        }
+
+        .log-line.blocked {
+            color: #fca5a5;
+        }
+
+        .log-line.safe {
+            color: #86efac;
+        }
+
+        .log-line.error {
+            color: #fcd34d;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--gray-600);
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .row {
+            display: flex;
+            gap: 20px;
+        }
+
+        .col-6 {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <svg class="logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="16" cy="16" r="15" fill="#2563eb"/>
+                    <path d="M10 16l4 4 8-8" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Spamtroll Anti-Spam
+            </h1>
+            <nav class="nav">
+                <a href="?action=dashboard" class="<?= $action === 'dashboard' ? 'active' : '' ?>">Dashboard</a>
+                <a href="?action=settings" class="<?= $action === 'settings' ? 'active' : '' ?>">Settings</a>
+                <a href="?action=logs" class="<?= $action === 'logs' ? 'active' : '' ?>">Logs</a>
+            </nav>
+        </div>
+
+        <?php if ($message): ?>
+        <div class="alert alert-<?= $messageType ?>">
+            <?= htmlspecialchars($message) ?>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($action === 'dashboard'): ?>
+        <!-- Dashboard -->
+        <div class="stats-grid">
+            <div class="stat-card total">
+                <div class="label">Total Emails (24h)</div>
+                <div class="value"><?= number_format($stats['last_24h']['total'] ?? 0) ?></div>
+            </div>
+            <div class="stat-card blocked">
+                <div class="label">Blocked (24h)</div>
+                <div class="value"><?= number_format($stats['last_24h']['blocked'] ?? 0) ?></div>
+            </div>
+            <div class="stat-card safe">
+                <div class="label">Safe (24h)</div>
+                <div class="value"><?= number_format($stats['last_24h']['safe'] ?? 0) ?></div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Status</div>
+                <div class="value">
+                    <?php if ($config['enabled']): ?>
+                    <span class="status-badge status-enabled">ACTIVE</span>
+                    <?php else: ?>
+                    <span class="status-badge status-disabled">DISABLED</span>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-6">
+                <div class="card">
+                    <h2>Recent Activity</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>From</th>
+                                <th>Status</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach (array_slice($stats['last_entries'] ?? [], 0, 10) as $entry): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($entry['timestamp']) ?></td>
+                                <td><?= htmlspecialchars($entry['from']) ?></td>
+                                <td>
+                                    <span class="status-badge status-<?= $entry['status'] === 'blocked' ? 'disabled' : 'enabled' ?>">
+                                        <?= strtoupper($entry['status']) ?>
+                                    </span>
+                                </td>
+                                <td><?= htmlspecialchars((string)($entry['score'] ?? '0')) ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($stats['last_entries'])): ?>
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: var(--gray-600);">No recent activity</td>
+                            </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card">
+                    <h2>Top Blocked Domains</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Domain</th>
+                                <th>Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($stats['top_blocked_domains'] ?? [] as $domain => $count): ?>
+                            <tr>
+                                <td><?= htmlspecialchars($domain) ?></td>
+                                <td><?= number_format($count) ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                            <?php if (empty($stats['top_blocked_domains'])): ?>
+                            <tr>
+                                <td colspan="2" style="text-align: center; color: var(--gray-600);">No blocked domains</td>
+                            </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <?php elseif ($action === 'settings'): ?>
+        <!-- Settings -->
+        <div class="card">
+            <h2>Configuration</h2>
+            <form method="post" action="?action=save">
+                <input type="hidden" name="csrftoken" value="<?= htmlspecialchars($csrfToken) ?>">
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enabled" name="enabled" value="1" <?= $config['enabled'] ? 'checked' : '' ?>>
+                        <label for="enabled">Enable spam filtering</label>
+                    </div>
+                    <p class="help">When enabled, incoming emails will be checked against the Spamtroll API.</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="api_key">API Key</label>
+                    <input type="password" id="api_key" name="api_key" value="<?= htmlspecialchars($config['api_key']) ?>" placeholder="Enter your Spamtroll API key">
+                    <p class="help">Get your API key from <a href="https://spamtroll.io/dashboard" target="_blank">spamtroll.io/dashboard</a></p>
+                </div>
+
+                <div class="form-group">
+                    <label for="api_url">API URL</label>
+                    <input type="text" id="api_url" name="api_url" value="<?= htmlspecialchars($config['api_url']) ?>">
+                    <p class="help">Default: https://api.spamtroll.io/api/v1/scan/check</p>
+                </div>
+
+                <div class="row">
+                    <div class="col-6">
+                        <div class="form-group">
+                            <label for="log_level">Log Level</label>
+                            <select id="log_level" name="log_level">
+                                <option value="error" <?= $config['log_level'] === 'error' ? 'selected' : '' ?>>Error only</option>
+                                <option value="info" <?= $config['log_level'] === 'info' ? 'selected' : '' ?>>Info</option>
+                                <option value="debug" <?= $config['log_level'] === 'debug' ? 'selected' : '' ?>>Debug</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="form-group">
+                            <label for="timeout">API Timeout (seconds)</label>
+                            <input type="number" id="timeout" name="timeout" value="<?= $config['timeout'] ?>" min="1" max="30">
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <button type="submit" class="btn btn-primary">Save Configuration</button>
+                    <button type="submit" formaction="?action=test" class="btn btn-secondary">Test Connection</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>System Information</h2>
+            <table>
+                <tr>
+                    <td><strong>Config File</strong></td>
+                    <td><?= SpamtrollConfig::getConfigFile() ?></td>
+                    <td>
+                        <?php if (SpamtrollConfig::exists()): ?>
+                        <span class="status-badge status-enabled">EXISTS</span>
+                        <?php else: ?>
+                        <span class="status-badge status-disabled">MISSING</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Log File</strong></td>
+                    <td><?= SpamtrollConfig::getLogFile() ?></td>
+                    <td>
+                        <?php if (file_exists(SpamtrollConfig::getLogFile())): ?>
+                        <span class="status-badge status-enabled">EXISTS</span>
+                        <?php else: ?>
+                        <span class="status-badge status-disabled">MISSING</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Check Script</strong></td>
+                    <td>/usr/local/bin/spamtroll-check</td>
+                    <td>
+                        <?php if (file_exists('/usr/local/bin/spamtroll-check')): ?>
+                        <span class="status-badge status-enabled">INSTALLED</span>
+                        <?php else: ?>
+                        <span class="status-badge status-disabled">MISSING</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Exim ACL</strong></td>
+                    <td>/etc/exim.acl_check_message.pre.conf</td>
+                    <td>
+                        <?php if (file_exists('/etc/exim.acl_check_message.pre.conf')): ?>
+                        <span class="status-badge status-enabled">CONFIGURED</span>
+                        <?php else: ?>
+                        <span class="status-badge status-disabled">MISSING</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <?php elseif ($action === 'logs'): ?>
+        <!-- Logs -->
+        <div class="card">
+            <h2>Recent Logs</h2>
+            <div class="log-viewer">
+<?php
+foreach ($logs as $line) {
+    $class = 'log-line';
+    if (strpos($line, 'status=blocked') !== false) {
+        $class .= ' blocked';
+    } elseif (strpos($line, 'status=safe') !== false) {
+        $class .= ' safe';
+    } elseif (strpos($line, '[error]') !== false) {
+        $class .= ' error';
+    }
+    echo '<div class="' . $class . '">' . htmlspecialchars($line) . "</div>\n";
+}
+if (empty($logs)) {
+    echo '<div class="log-line">No log entries found.</div>';
+}
+?>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <div style="text-align: center; margin-top: 24px; color: var(--gray-600); font-size: 12px;">
+            Spamtroll Anti-Spam v1.0.0 &middot; <a href="https://spamtroll.io" target="_blank">spamtroll.io</a>
+        </div>
+    </div>
+<script>
+(function() {
+    var forms = document.querySelectorAll('form');
+    var csrfInput = document.querySelector('input[name="csrftoken"]');
+    if (csrfInput && csrfInput.value) return; // Already have token
+
+    fetch(window.location.pathname + '?a=cookie', {credentials: 'same-origin'})
+        .then(function(r) { return r.text(); })
+        .then(function(text) {
+            var token = text.trim();
+            try { token = JSON.parse(token).csrftoken || token; } catch(e) {}
+            if (token) {
+                document.querySelectorAll('input[name="csrftoken"]').forEach(function(el) {
+                    el.value = token;
+                });
+                document.cookie = 'csrftoken=' + encodeURIComponent(token) + '; path=/; SameSite=Strict';
+            }
+        })
+        .catch(function() {});
+})();
+</script>
+</body>
+</html>

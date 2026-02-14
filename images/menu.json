@@ -1,0 +1,29 @@
+[
+    {
+        "name": "Anti-Spam",
+        "icon": "/CMD_PLUGINS_ADMIN/spamtroll/images/admin_icon.svg",
+        "entries": [
+            {
+                "name": "Spamtroll Dashboard",
+                "icon": "/CMD_PLUGINS_ADMIN/spamtroll/images/admin_icon.svg",
+                "href": "/CMD_PLUGINS_ADMIN/spamtroll/",
+                "newTab": false,
+                "updates": 0
+            },
+            {
+                "name": "Settings",
+                "icon": "/CMD_PLUGINS_ADMIN/spamtroll/images/admin_icon.svg",
+                "href": "/CMD_PLUGINS_ADMIN/spamtroll/?action=settings",
+                "newTab": false,
+                "updates": 0
+            },
+            {
+                "name": "Logs",
+                "icon": "/CMD_PLUGINS_ADMIN/spamtroll/images/admin_icon.svg",
+                "href": "/CMD_PLUGINS_ADMIN/spamtroll/?action=logs",
+                "newTab": false,
+                "updates": 0
+            }
+        ]
+    }
+]
