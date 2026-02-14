@@ -416,6 +416,11 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
             background: var(--gray-300);
         }
 
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         .alert {
             padding: 12px 16px;
             border-radius: 6px;
@@ -916,5 +921,37 @@ if (empty($logs)) {
             Spamtroll Anti-Spam v1.0.0 &middot; <a href="https://spamtroll.io" target="_blank">spamtroll.io</a>
         </div>
     </div>
+<script>
+(function() {
+    // Loading states on form submit
+    document.querySelectorAll('form').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            // Disable confirmation for disabling filtering
+            var enabledCheckbox = form.querySelector('#enabled');
+            if (enabledCheckbox && !enabledCheckbox.checked && form.action.indexOf('action=save') !== -1) {
+                if (!confirm('Are you sure you want to disable spam filtering? All incoming emails will be accepted without checking.')) {
+                    e.preventDefault();
+                    return;
+                }
+            }
+
+            var buttons = form.querySelectorAll('button[type="submit"]');
+            buttons.forEach(function(btn) {
+                btn.disabled = true;
+                btn.dataset.originalText = btn.textContent;
+                btn.textContent = 'Processing...';
+            });
+
+            // Re-enable after 10s timeout (safety net)
+            setTimeout(function() {
+                buttons.forEach(function(btn) {
+                    btn.disabled = false;
+                    btn.textContent = btn.dataset.originalText || btn.textContent;
+                });
+            }, 10000);
+        });
+    });
+})();
+</script>
 </body>
 </html>
