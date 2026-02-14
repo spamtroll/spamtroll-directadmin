@@ -147,6 +147,66 @@ if ($action === 'logs') {
     $logs = $statsManager->getRecentLogs(200);
 }
 
+// CSV export (must be before any HTML output)
+if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
+    if (empty($stats)) {
+        $statsManager = new SpamtrollStats();
+        $stats = $statsManager->getStats();
+    }
+    $filename = 'spamtroll-stats-' . date('Y-m-d') . '.csv';
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+
+    $out = fopen('php://output', 'w');
+
+    // Summary
+    fputcsv($out, ['Spamtroll Statistics Export', date('Y-m-d H:i:s')]);
+    fputcsv($out, []);
+    fputcsv($out, ['Summary']);
+    fputcsv($out, ['Total', $stats['total'] ?? 0]);
+    fputcsv($out, ['Blocked', $stats['blocked'] ?? 0]);
+    fputcsv($out, ['Safe', $stats['safe'] ?? 0]);
+    fputcsv($out, ['Last 24h Total', $stats['last_24h']['total'] ?? 0]);
+    fputcsv($out, ['Last 24h Blocked', $stats['last_24h']['blocked'] ?? 0]);
+    fputcsv($out, ['Last 24h Safe', $stats['last_24h']['safe'] ?? 0]);
+    fputcsv($out, []);
+
+    // Hourly breakdown
+    fputcsv($out, ['Hourly Breakdown (24h)']);
+    fputcsv($out, ['Hour', 'Safe', 'Blocked']);
+    for ($h = 0; $h < 24; $h++) {
+        $key = sprintf('%02d:00', $h);
+        $safe = $stats['by_hour'][$key]['safe'] ?? 0;
+        $blocked = $stats['by_hour'][$key]['blocked'] ?? 0;
+        fputcsv($out, [$key, $safe, $blocked]);
+    }
+    fputcsv($out, []);
+
+    // Top blocked domains
+    fputcsv($out, ['Top Blocked Domains']);
+    fputcsv($out, ['Domain', 'Count']);
+    foreach ($stats['top_blocked_domains'] ?? [] as $domain => $count) {
+        fputcsv($out, [$domain, $count]);
+    }
+    fputcsv($out, []);
+
+    // Recent entries
+    fputcsv($out, ['Recent Entries']);
+    fputcsv($out, ['Timestamp', 'From', 'IP', 'Status', 'Score']);
+    foreach ($stats['last_entries'] ?? [] as $entry) {
+        fputcsv($out, [
+            $entry['timestamp'],
+            $entry['from'],
+            $entry['ip'],
+            $entry['status'],
+            $entry['score'],
+        ]);
+    }
+
+    fclose($out);
+    exit;
+}
+
 // Output HTML
 ?>
 <!DOCTYPE html>
@@ -552,6 +612,9 @@ if ($action === 'logs') {
 
         <?php if ($action === 'dashboard'): ?>
         <!-- Dashboard -->
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+            <a href="?action=export&format=csv" class="btn btn-secondary">Export CSV</a>
+        </div>
         <div class="stats-grid">
             <div class="stat-card total">
                 <div class="label">Total Emails (24h)</div>
