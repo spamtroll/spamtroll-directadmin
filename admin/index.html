@@ -408,6 +408,78 @@ if ($action === 'logs') {
             flex: 1;
         }
 
+        .hourly-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 120px;
+            padding: 0 4px;
+        }
+
+        .hourly-chart .bar-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+            justify-content: flex-end;
+        }
+
+        .hourly-chart .bar-stack {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            flex: 1;
+        }
+
+        .hourly-chart .bar-blocked {
+            background: var(--danger);
+            border-radius: 2px 2px 0 0;
+            min-width: 4px;
+        }
+
+        .hourly-chart .bar-safe {
+            background: var(--success);
+            min-width: 4px;
+        }
+
+        .hourly-chart .bar-safe:first-child {
+            border-radius: 2px 2px 0 0;
+        }
+
+        .hourly-chart .bar-label {
+            font-size: 10px;
+            color: var(--gray-600);
+            margin-top: 4px;
+        }
+
+        .chart-legend {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: var(--gray-600);
+        }
+
+        .chart-legend span::before {
+            content: '';
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+
+        .chart-legend .legend-safe::before {
+            background: var(--success);
+        }
+
+        .chart-legend .legend-blocked::before {
+            background: var(--danger);
+        }
+
         @media (max-width: 768px) {
             .row {
                 flex-direction: column;
@@ -462,6 +534,46 @@ if ($action === 'logs') {
                     <span class="status-badge status-disabled">DISABLED</span>
                     <?php endif; ?>
                 </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Hourly Activity (24h)</h2>
+            <?php
+            $byHour = $stats['by_hour'] ?? [];
+            $maxHourly = 1;
+            for ($h = 0; $h < 24; $h++) {
+                $key = sprintf('%02d:00', $h);
+                $total = ($byHour[$key]['safe'] ?? 0) + ($byHour[$key]['blocked'] ?? 0);
+                if ($total > $maxHourly) $maxHourly = $total;
+            }
+            ?>
+            <div class="hourly-chart">
+                <?php for ($h = 0; $h < 24; $h++):
+                    $key = sprintf('%02d:00', $h);
+                    $safe = $byHour[$key]['safe'] ?? 0;
+                    $blocked = $byHour[$key]['blocked'] ?? 0;
+                    $safeHeight = $maxHourly > 0 ? round(($safe / $maxHourly) * 100) : 0;
+                    $blockedHeight = $maxHourly > 0 ? round(($blocked / $maxHourly) * 100) : 0;
+                ?>
+                <div class="bar-group">
+                    <div class="bar-stack">
+                        <?php if ($blocked > 0): ?>
+                        <div class="bar-blocked" style="height: <?= $blockedHeight ?>%" title="<?= $key ?>: <?= $blocked ?> blocked"></div>
+                        <?php endif; ?>
+                        <?php if ($safe > 0): ?>
+                        <div class="bar-safe" style="height: <?= $safeHeight ?>%" title="<?= $key ?>: <?= $safe ?> safe"></div>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($h % 3 === 0): ?>
+                    <div class="bar-label"><?= $h ?></div>
+                    <?php endif; ?>
+                </div>
+                <?php endfor; ?>
+            </div>
+            <div class="chart-legend">
+                <span class="legend-safe">Safe</span>
+                <span class="legend-blocked">Blocked</span>
             </div>
         </div>
 
