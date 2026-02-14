@@ -699,7 +699,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach (array_slice($stats['last_entries'] ?? [], 0, 10) as $entry): ?>
+                            <?php foreach (array_slice($stats['last_entries'] ?? [], 0, 25) as $entry): ?>
                             <tr>
                                 <td><?= htmlspecialchars($entry['timestamp']) ?></td>
                                 <td><?= htmlspecialchars($entry['from']) ?></td>
@@ -830,6 +830,24 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
             </form>
         </div>
 
+        <?php
+        function fileInfo(string $path): string {
+            if (!file_exists($path)) {
+                return '';
+            }
+            $size = filesize($path);
+            $perms = substr(sprintf('%o', fileperms($path)), -4);
+            $mtime = date('Y-m-d H:i', filemtime($path));
+            if ($size >= 1048576) {
+                $sizeStr = round($size / 1048576, 1) . ' MB';
+            } elseif ($size >= 1024) {
+                $sizeStr = round($size / 1024, 1) . ' KB';
+            } else {
+                $sizeStr = $size . ' B';
+            }
+            return htmlspecialchars("{$sizeStr}, {$perms}, {$mtime}");
+        }
+        ?>
         <div class="card">
             <h2>System Information</h2>
             <table>
@@ -839,6 +857,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <td>
                         <?php if (SpamtrollConfig::exists()): ?>
                         <span class="status-badge status-enabled">EXISTS</span>
+                        <span style="font-size: 12px; color: var(--gray-600); margin-left: 8px;"><?= fileInfo(SpamtrollConfig::getConfigFile()) ?></span>
                         <?php else: ?>
                         <span class="status-badge status-disabled">MISSING</span>
                         <?php endif; ?>
@@ -850,6 +869,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <td>
                         <?php if (file_exists(SpamtrollConfig::getLogFile())): ?>
                         <span class="status-badge status-enabled">EXISTS</span>
+                        <span style="font-size: 12px; color: var(--gray-600); margin-left: 8px;"><?= fileInfo(SpamtrollConfig::getLogFile()) ?></span>
                         <?php else: ?>
                         <span class="status-badge status-disabled">MISSING</span>
                         <?php endif; ?>
@@ -861,6 +881,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <td>
                         <?php if (file_exists('/usr/local/bin/spamtroll-check')): ?>
                         <span class="status-badge status-enabled">INSTALLED</span>
+                        <span style="font-size: 12px; color: var(--gray-600); margin-left: 8px;"><?= fileInfo('/usr/local/bin/spamtroll-check') ?></span>
                         <?php else: ?>
                         <span class="status-badge status-disabled">MISSING</span>
                         <?php endif; ?>
@@ -872,6 +893,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <td>
                         <?php if (file_exists('/etc/exim.acl_check_message.pre.conf')): ?>
                         <span class="status-badge status-enabled">CONFIGURED</span>
+                        <span style="font-size: 12px; color: var(--gray-600); margin-left: 8px;"><?= fileInfo('/etc/exim.acl_check_message.pre.conf') ?></span>
                         <?php else: ?>
                         <span class="status-badge status-disabled">MISSING</span>
                         <?php endif; ?>
