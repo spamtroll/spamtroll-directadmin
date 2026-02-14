@@ -99,6 +99,12 @@ if ($requestMethod === 'POST') {
             if ($result['success']) {
                 $message = 'Connection successful! API is reachable.';
                 $messageType = 'success';
+                // Fetch API usage info
+                $api = new SpamtrollAPI();
+                $usageResult = $api->getAccountUsage();
+                if ($usageResult['success'] && !empty($usageResult['data'])) {
+                    $apiUsage = $usageResult['data'];
+                }
             } else {
                 $message = 'Connection failed: ' . ($result['error'] ?? 'Unknown error');
                 $messageType = 'error';
@@ -803,6 +809,18 @@ if ($action === 'logs') {
                         <?php endif; ?>
                     </td>
                 </tr>
+                <?php if (!empty($apiUsage)): ?>
+                <tr>
+                    <td><strong>API Usage</strong></td>
+                    <td colspan="2">
+                        <?php
+                        $used = $apiUsage['used'] ?? $apiUsage['requests_used'] ?? '?';
+                        $limit = $apiUsage['limit'] ?? $apiUsage['requests_limit'] ?? '?';
+                        echo htmlspecialchars("{$used} / {$limit} requests");
+                        ?>
+                    </td>
+                </tr>
+                <?php endif; ?>
             </table>
         </div>
 
