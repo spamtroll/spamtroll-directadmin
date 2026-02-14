@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Professional README.md with installation, configuration, and usage documentation
 - MIT License
+- **W6**: Pluggable menu support for DirectAdmin Evolution skin (images/menu.json)
+- **W7**: Added version_url to plugin.conf for automatic update checking
+- **M4**: Added logrotate configuration for /var/log/spamtroll.log
 
 ### Fixed
 - **K1**: Added CSRF token protection to admin panel forms (DirectAdmin requirement)
@@ -24,11 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **W10**: Added body size limit in Exim ACL configuration
 - **M3**: Fixed regex patterns for parsing quoted config values
 - **M5**: Added API key format validation on save
-
-### Added
-- **W6**: Pluggable menu support for DirectAdmin Evolution skin (images/menu.json)
-- **W7**: Added version_url to plugin.conf for automatic update checking
-- **M4**: Added logrotate configuration for /var/log/spamtroll.log
 
 ### Changed
 - Config file location: /etc/spamtroll.conf → plugin/data/spamtroll.conf
