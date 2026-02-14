@@ -57,6 +57,15 @@ else
     echo -e "${YELLOW}Warning: Source file not found, skipping${NC}"
 fi
 
+# Update logrotate config
+echo ""
+echo "Updating logrotate configuration..."
+if [[ -f "$PLUGIN_DIR/exim/spamtroll-logrotate" ]]; then
+    cp "$PLUGIN_DIR/exim/spamtroll-logrotate" /etc/logrotate.d/spamtroll
+    chmod 644 /etc/logrotate.d/spamtroll
+    echo -e "${GREEN}Updated: /etc/logrotate.d/spamtroll${NC}"
+fi
+
 # Rebuild Exim configuration via DirectAdmin
 echo ""
 echo "Rebuilding Exim configuration..."

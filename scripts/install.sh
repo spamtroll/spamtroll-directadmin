@@ -144,6 +144,17 @@ chmod 640 "$LOG_FILE"
 chown root:diradmin "$LOG_FILE"
 echo -e "${GREEN}Created: $LOG_FILE${NC}"
 
+# Install logrotate config
+echo ""
+echo "Installing logrotate configuration..."
+if [[ -f "$PLUGIN_DIR/exim/spamtroll-logrotate" ]]; then
+    cp "$PLUGIN_DIR/exim/spamtroll-logrotate" /etc/logrotate.d/spamtroll
+    chmod 644 /etc/logrotate.d/spamtroll
+    echo -e "${GREEN}Installed: /etc/logrotate.d/spamtroll${NC}"
+else
+    echo -e "${YELLOW}Warning: logrotate config not found in plugin directory${NC}"
+fi
+
 # Rebuild Exim configuration via DirectAdmin
 echo ""
 echo "Rebuilding Exim configuration..."

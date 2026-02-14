@@ -65,6 +65,16 @@ else
     echo -e "${YELLOW}Not found: $EXIM_ACL_FILE (skipping)${NC}"
 fi
 
+# Remove logrotate config
+echo ""
+echo "Removing logrotate configuration..."
+if [[ -f /etc/logrotate.d/spamtroll ]]; then
+    rm -f /etc/logrotate.d/spamtroll
+    echo -e "${GREEN}Removed: /etc/logrotate.d/spamtroll${NC}"
+else
+    echo -e "${YELLOW}Not found: /etc/logrotate.d/spamtroll (skipping)${NC}"
+fi
+
 # Keep config and logs
 echo ""
 echo -e "${YELLOW}Keeping configuration and logs for potential reinstall:${NC}"
