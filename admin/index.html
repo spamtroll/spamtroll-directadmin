@@ -104,6 +104,26 @@ if ($requestMethod === 'POST') {
                 $messageType = 'error';
             }
             break;
+
+        case 'test_email':
+            $testContent = trim($_POST['test_content'] ?? '');
+            if ($testContent === '') {
+                $message = 'Please enter some content to test.';
+                $messageType = 'error';
+            } else {
+                $api = new SpamtrollAPI();
+                $result = $api->checkSpam($testContent);
+                if ($result['success']) {
+                    $status = $result['data']['status'] ?? 'unknown';
+                    $score = $result['data']['spam_score'] ?? $result['data']['score'] ?? 'N/A';
+                    $message = "Test result: {$status} (score: {$score})";
+                    $messageType = $status === 'blocked' ? 'error' : 'success';
+                } else {
+                    $message = 'Test failed: ' . ($result['error'] ?? 'Unknown error');
+                    $messageType = 'error';
+                }
+            }
+            break;
     }
 }
 
@@ -720,6 +740,19 @@ if ($action === 'logs') {
                     <button type="submit" class="btn btn-primary">Save Configuration</button>
                     <button type="submit" formaction="?action=test" class="btn btn-secondary">Test Connection</button>
                 </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Test Email Content</h2>
+            <form method="post" action="?action=test_email">
+                <input type="hidden" name="csrftoken" value="<?= htmlspecialchars($csrfToken) ?>">
+                <div class="form-group">
+                    <label for="test_content">Email content to check</label>
+                    <textarea id="test_content" name="test_content" rows="4" style="width: 100%; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 14px; font-family: inherit; resize: vertical;" placeholder="Paste email content here to test spam detection..."><?= htmlspecialchars($_POST['test_content'] ?? '') ?></textarea>
+                    <p class="help">Enter sample email content to test against the Spamtroll API. This will not affect any real emails.</p>
+                </div>
+                <button type="submit" class="btn btn-secondary">Test Content</button>
             </form>
         </div>
 

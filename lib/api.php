@@ -2,8 +2,7 @@
 /**
  * Spamtroll API Client
  *
- * NOTE: This class is currently not used by the admin panel (which uses
- * SpamtrollConfig::testConnection() directly). Kept for future use.
+ * Used by the admin panel for email testing and account usage checks.
  */
 
 require_once __DIR__ . '/config.php';
@@ -61,7 +60,7 @@ class SpamtrollAPI
         return $this->request('POST', '/scan/check', [
             'content' => $content,
             'source' => $source,
-            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1',
+            'ip_address' => getenv('REMOTE_ADDR') ?: '127.0.0.1',
         ]);
     }
 
