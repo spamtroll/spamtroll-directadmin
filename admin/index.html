@@ -896,7 +896,21 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
         <!-- Logs -->
         <div class="card">
             <h2>Recent Logs</h2>
-            <div class="log-viewer">
+            <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
+                <input type="text" id="log-search" placeholder="Search logs..." style="flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 14px;">
+                <select id="log-filter" style="padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 14px;">
+                    <option value="all">All</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="safe">Safe</option>
+                    <option value="error">Error</option>
+                </select>
+                <label style="display: flex; align-items: center; gap: 4px; font-size: 14px; color: var(--gray-600); cursor: pointer;">
+                    <input type="checkbox" id="log-autorefresh" <?= ($_GET['autorefresh'] ?? '') === '1' ? 'checked' : '' ?>>
+                    Auto-refresh (10s)
+                </label>
+                <a href="?action=logs" class="btn btn-secondary" style="padding: 8px 12px;">Refresh</a>
+            </div>
+            <div class="log-viewer" id="log-viewer">
 <?php
 foreach ($logs as $line) {
     $class = 'log-line';
@@ -951,6 +965,53 @@ if (empty($logs)) {
             }, 10000);
         });
     });
+    // Log filtering and search
+    var logSearch = document.getElementById('log-search');
+    var logFilter = document.getElementById('log-filter');
+    var logViewer = document.getElementById('log-viewer');
+
+    function filterLogs() {
+        if (!logViewer) return;
+        var search = (logSearch ? logSearch.value : '').toLowerCase();
+        var filter = logFilter ? logFilter.value : 'all';
+        var lines = logViewer.querySelectorAll('.log-line');
+        lines.forEach(function(line) {
+            var text = line.textContent.toLowerCase();
+            var matchSearch = !search || text.indexOf(search) !== -1;
+            var matchFilter = filter === 'all'
+                || (filter === 'blocked' && line.classList.contains('blocked'))
+                || (filter === 'safe' && line.classList.contains('safe'))
+                || (filter === 'error' && line.classList.contains('error'));
+            line.style.display = (matchSearch && matchFilter) ? '' : 'none';
+        });
+    }
+
+    if (logSearch) logSearch.addEventListener('input', filterLogs);
+    if (logFilter) logFilter.addEventListener('change', filterLogs);
+
+    // Auto-refresh
+    var autoRefresh = document.getElementById('log-autorefresh');
+    var autoRefreshTimer = null;
+
+    function startAutoRefresh() {
+        if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+        autoRefreshTimer = setTimeout(function() {
+            window.location.href = '?action=logs&autorefresh=1';
+        }, 10000);
+    }
+
+    if (autoRefresh) {
+        autoRefresh.addEventListener('change', function() {
+            if (this.checked) {
+                startAutoRefresh();
+            } else {
+                if (autoRefreshTimer) clearTimeout(autoRefreshTimer);
+            }
+        });
+        if (autoRefresh.checked) {
+            startAutoRefresh();
+        }
+    }
 })();
 </script>
 </body>
