@@ -48,6 +48,11 @@ $message = '';
 $messageType = '';
 
 if ($requestMethod === 'POST') {
+    $postCsrf = $_POST['csrftoken'] ?? '';
+    if ($postCsrf === '' || $postCsrf !== $csrfToken) {
+        $message = 'Invalid or missing CSRF token. Please reload the page and try again.';
+        $messageType = 'error';
+    } else
     switch ($action) {
         case 'save':
             $newConfig = [
@@ -654,26 +659,5 @@ if (empty($logs)) {
             Spamtroll Anti-Spam v1.0.0 &middot; <a href="https://spamtroll.io" target="_blank">spamtroll.io</a>
         </div>
     </div>
-<script>
-(function() {
-    var forms = document.querySelectorAll('form');
-    var csrfInput = document.querySelector('input[name="csrftoken"]');
-    if (csrfInput && csrfInput.value) return; // Already have token
-
-    fetch(window.location.pathname + '?a=cookie', {credentials: 'same-origin'})
-        .then(function(r) { return r.text(); })
-        .then(function(text) {
-            var token = text.trim();
-            try { token = JSON.parse(token).csrftoken || token; } catch(e) {}
-            if (token) {
-                document.querySelectorAll('input[name="csrftoken"]').forEach(function(el) {
-                    el.value = token;
-                });
-                document.cookie = 'csrftoken=' + encodeURIComponent(token) + '; path=/; SameSite=Strict';
-            }
-        })
-        .catch(function() {});
-})();
-</script>
 </body>
 </html>
