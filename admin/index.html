@@ -623,6 +623,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                 color: var(--gray-800);
             }
             /* All "card" surfaces were hard-coded `background: white`; override. */
+            .card,
             .stat-card,
             .chart-card,
             .chart,
@@ -642,6 +643,29 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                 color: var(--gray-800);
                 border-color: var(--gray-200);
             }
+            /* Tables inside cards — default <table> has no class, so give
+               rows a visible separator and make headers readable. */
+            table { color: var(--gray-800); }
+            th { color: var(--gray-600); }
+            th, td { border-bottom-color: var(--gray-200) !important; }
+            /* Log viewer: original used var(--gray-800) for its dark
+               background, but in dark mode gray-800 is the LIGHT text
+               color, so the viewer became light-on-light. Force a real
+               near-black with light text. */
+            .log-viewer {
+                background: #0d1117 !important;
+                color: #e5e7eb !important;
+            }
+            /* Card shadow on dark body is invisible — replace with a
+               subtle border so sections have a visible edge. */
+            .card, .stat-card {
+                box-shadow: none !important;
+                border: 1px solid var(--gray-200);
+            }
+            /* Card headings were gray-700; keep them readable. */
+            .card h2, .form-group label { color: var(--gray-700); }
+            /* .help and small muted notes hardcoded to gray-600 stay OK
+               because we redefined gray-600 to a muted light color. */
             input::placeholder,
             textarea::placeholder { color: var(--gray-600); }
             a { color: var(--primary); }
