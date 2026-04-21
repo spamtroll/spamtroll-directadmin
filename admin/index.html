@@ -62,10 +62,15 @@ $messageType = '';
 if ($requestMethod === 'POST') {
     switch ($action) {
         case 'save':
+            // api_url is intentionally NOT user-editable — it's pinned
+            // to the production Spamtroll endpoint in SpamtrollConfig's
+            // defaults. Anything the client sends for `api_url` is
+            // ignored to keep the settings UI simple and prevent
+            // misconfiguration.
             $newConfig = [
                 'enabled' => isset($_POST['enabled']) && $_POST['enabled'] === '1',
                 'api_key' => trim($_POST['api_key'] ?? ''),
-                'api_url' => trim($_POST['api_url'] ?? $config['api_url']),
+                'api_url' => SpamtrollConfig::defaultApiUrl(),
                 'log_level' => $_POST['log_level'] ?? 'info',
                 'timeout' => (int)($_POST['timeout'] ?? 5),
                 'whitelist' => trim($_POST['whitelist'] ?? ''),
@@ -863,12 +868,6 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <label for="api_key">API Key</label>
                     <input type="password" id="api_key" name="api_key" value="<?= htmlspecialchars($config['api_key']) ?>" placeholder="Enter your Spamtroll API key">
                     <p class="help">Get your API key from <a href="https://spamtroll.io/dashboard" target="_blank">spamtroll.io/dashboard</a></p>
-                </div>
-
-                <div class="form-group">
-                    <label for="api_url">API URL</label>
-                    <input type="text" id="api_url" name="api_url" value="<?= htmlspecialchars($config['api_url']) ?>">
-                    <p class="help">Default: https://api.spamtroll.io/api/v1 (base URL, without /scan/check)</p>
                 </div>
 
                 <div class="row">

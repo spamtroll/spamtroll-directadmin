@@ -11,22 +11,34 @@ class SpamtrollConfig
     private static $configFile = '/usr/local/directadmin/plugins/spamtroll/data/spamtroll.conf';
     private static $logFile = '/var/log/spamtroll.log';
 
+    // Hardcoded API base URL. Intentionally NOT user-editable — the
+    // settings UI only asks for the API key. If the endpoint ever
+    // changes, bump this constant and ship a new plugin version.
+    const API_URL = 'https://api.spamtroll.io/api/v1';
+
     /**
-     * Default configuration values
+     * Default configuration values.
+     * api_url is always overridden to API_URL on load(), so the value
+     * stored on disk is ignored even if a user hand-edits the conf
+     * file or an old config carries a stale value.
      */
     private static $defaults = [
         'enabled' => false,
         'api_key' => '',
-        // Base URL only — endpoints like /scan/check are appended by api.php.
-        // If the user pastes the full /scan/check URL here, normalizeBaseUrl()
-        // in load() will strip the suffix so we don't end up with
-        // https://api.spamtroll.io/api/v1/scan/check/scan/check.
-        'api_url' => 'https://api.spamtroll.io/api/v1',
+        'api_url' => self::API_URL,
         'log_level' => 'info',
         'timeout' => 5,
         'whitelist' => '',
         'blacklist' => '',
     ];
+
+    /**
+     * Return the pinned API base URL.
+     */
+    public static function defaultApiUrl(): string
+    {
+        return self::API_URL;
+    }
 
     /**
      * Load configuration from file
@@ -66,13 +78,12 @@ class SpamtrollConfig
                 } elseif ($key === 'timeout') {
                     $config[$key] = (int)$value;
                 } elseif ($key === 'api_url') {
-                    // Normalize: strip trailing slashes and a trailing
-                    // `/scan/check` if the user pasted the full endpoint
-                    // URL instead of the base. Prevents double-appending
-                    // in SpamtrollAPI::request().
-                    $value = rtrim($value, '/');
-                    $value = preg_replace('#/scan/check$#', '', $value);
-                    $config[$key] = $value;
+                    // Ignore whatever is stored on disk — the URL is
+                    // pinned to self::API_URL to keep configuration
+                    // simple. Old configs with the full /scan/check
+                    // URL (which caused double-append bugs) are
+                    // therefore silently corrected every load.
+                    $config[$key] = self::API_URL;
                 } else {
                     $config[$key] = $value;
                 }
