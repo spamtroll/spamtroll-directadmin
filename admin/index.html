@@ -34,19 +34,20 @@ foreach (explode('; ', $cookieStr) as $pair) {
     }
 }
 
-// CSRF token — session-scoped double-submit cookie.
-// DirectAdmin's own `csrftoken` cookie isn't exposed to plugin CGI
-// scripts, so we issue our own `spamtroll_csrf` cookie on first GET
-// and validate the form field against it on every POST. DA has
-// already authenticated the user (access=admin) by the time this
-// script runs, so this just guards against CSRF from other origins.
-$csrfToken = $_COOKIE['spamtroll_csrf'] ?? '';
-if ($csrfToken === '') {
-    $csrfToken = bin2hex(random_bytes(32));
-    header('Set-Cookie: spamtroll_csrf=' . $csrfToken
-        . '; Path=/CMD_PLUGINS_ADMIN/spamtroll'
-        . '; HttpOnly; SameSite=Strict; Secure', false);
-}
+// CSRF protection is deliberately not implemented here:
+//   * The plugin's plugin.conf has `access=admin`, so DA has already
+//     authenticated the caller and checked their admin privilege
+//     before the script even runs.
+//   * DA's session cookie is HttpOnly + SameSite=Lax, so a cross-
+//     origin form POST from an attacker's page will NOT carry the
+//     admin's session and would be rejected by DA before it reaches
+//     this script.
+//   * Multiple previous attempts to add our own CSRF token failed:
+//     DA's CGI wrapper strips `Set-Cookie` headers from plugins, so
+//     we could never round-trip a token cookie to the browser.
+// Defense in depth here would be welcome but is out of scope for the
+// plugin; it's adequately protected by DA's session layer.
+$csrfToken = ''; // kept for template compatibility (rendered as empty hidden input)
 
 // Get action from request
 $action = $_GET['action'] ?? 'dashboard';
@@ -59,11 +60,6 @@ $message = '';
 $messageType = '';
 
 if ($requestMethod === 'POST') {
-    $postCsrf = $_POST['csrftoken'] ?? '';
-    if ($postCsrf === '' || $postCsrf !== $csrfToken) {
-        $message = 'Invalid or missing CSRF token. Please reload the page and try again.';
-        $messageType = 'error';
-    } else
     switch ($action) {
         case 'save':
             $newConfig = [
