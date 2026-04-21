@@ -78,13 +78,21 @@ else
     exit 1
 fi
 
-# Create data directory
+# Create data directory.
+# Ownership note:
+#   * The DirectAdmin plugin CGI (admin/index.html) runs as user `admin`,
+#     NOT `diradmin`, so the data dir and config file must be writable
+#     by `admin`.
+#   * The Exim ACL check script (exim/spamtroll-check) runs under Exim
+#     itself, which is the `mail` user on nawia-class setups.
+#   * Pick owner:group = admin:mail so admin writes + mail reads,
+#     mode 0750 on dirs and 0640 on files.
 echo ""
 echo "Setting up data directory..."
 mkdir -p "$DATA_DIR/cache"
-chown -R diradmin:diradmin "$DATA_DIR"
-chmod 770 "$DATA_DIR"
-chmod 770 "$DATA_DIR/cache"
+chown -R admin:mail "$DATA_DIR"
+chmod 750 "$DATA_DIR"
+chmod 750 "$DATA_DIR/cache"
 echo -e "${GREEN}Created: $DATA_DIR${NC}"
 
 # Create config file (if not exists)
@@ -107,8 +115,8 @@ API_URL="https://api.spamtroll.io/api/v1/scan/check"
 LOG_LEVEL="info"
 TIMEOUT=5
 CONF
-    chmod 660 "$CONFIG_FILE"
-    chown diradmin:diradmin "$CONFIG_FILE"
+    chmod 640 "$CONFIG_FILE"
+    chown admin:mail "$CONFIG_FILE"
     echo -e "${GREEN}Created: $CONFIG_FILE${NC}"
 else
     echo -e "${YELLOW}Config file already exists, keeping current settings${NC}"
@@ -136,12 +144,14 @@ else
     exit 1
 fi
 
-# Create log file
+# Create log file.
+# Written by both the Exim check script (user: mail) and the admin
+# dashboard (user: admin). Both need write access.
 echo ""
 echo "Setting up log file..."
 touch "$LOG_FILE"
-chmod 640 "$LOG_FILE"
-chown root:diradmin "$LOG_FILE"
+chmod 660 "$LOG_FILE"
+chown admin:mail "$LOG_FILE"
 echo -e "${GREEN}Created: $LOG_FILE${NC}"
 
 # Install logrotate config
