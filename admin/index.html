@@ -601,6 +601,72 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                 flex-direction: column;
             }
         }
+
+        /* Dark mode — auto-adapts to DirectAdmin's dark theme / OS
+           dark mode. Palette roughly aligned with the main Spamtroll
+           app (#0d1117 / #161b22 / #21262d / #30363d) so the plugin
+           fits rather than looking like a foreign iframe. */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --primary: #3b82f6;
+                --primary-dark: #2563eb;
+                --gray-50:  #0d1117;
+                --gray-100: #161b22;
+                --gray-200: #30363d;
+                --gray-300: #484f58;
+                --gray-600: #8b949e;
+                --gray-700: #c9d1d9;
+                --gray-800: #f0f6fc;
+            }
+            body {
+                background: #0d1117;
+                color: var(--gray-800);
+            }
+            /* All "card" surfaces were hard-coded `background: white`; override. */
+            .stat-card,
+            .chart-card,
+            .chart,
+            .chart-wrapper,
+            .log-entries,
+            .log-entry,
+            .table-wrapper,
+            .table,
+            .recent-activity,
+            .top-blocked,
+            .form-section,
+            .form-control,
+            input:not([type="checkbox"]):not([type="radio"]),
+            select,
+            textarea {
+                background: #21262d !important;
+                color: var(--gray-800);
+                border-color: var(--gray-200);
+            }
+            input::placeholder,
+            textarea::placeholder { color: var(--gray-600); }
+            a { color: var(--primary); }
+            /* Status pills (success / danger backgrounds were pastel) */
+            .status-enabled,
+            .tag-success,
+            .badge-safe {
+                background: rgba(22, 163, 74, 0.15);
+                color: #4ade80;
+            }
+            .status-disabled,
+            .tag-danger,
+            .badge-blocked {
+                background: rgba(220, 38, 38, 0.15);
+                color: #f87171;
+            }
+            /* Buttons secondary */
+            .btn-secondary {
+                background: var(--gray-200);
+                color: var(--gray-700);
+            }
+            .btn-secondary:hover {
+                background: var(--gray-300);
+            }
+        }
     </style>
 </head>
 <body>
