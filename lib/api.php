@@ -119,10 +119,26 @@ class SpamtrollAPI
 
         $decoded = json_decode($response, true);
 
+        // Backend envelopes responses as
+        //   {"success": true, "data": {...actual payload...}}
+        // or
+        //   {"success": false, "error": {"code": "...", "message": "..."}}
+        // Unwrap `data` for callers so they don't need to reach through
+        // two levels and end up with status=unknown / score=N/A when
+        // the envelope changes.
+        $ok = $httpCode >= 200 && $httpCode < 300 && ($decoded['success'] ?? true);
+        $payload = is_array($decoded) && array_key_exists('data', $decoded)
+            ? $decoded['data']
+            : $decoded;
+        $error = $decoded['error']['message']
+            ?? $decoded['error']
+            ?? ($decoded['message'] ?? null);
+
         return [
-            'success' => $httpCode >= 200 && $httpCode < 300,
+            'success' => $ok,
             'code' => $httpCode,
-            'data' => $decoded,
+            'data' => $payload,
+            'error' => $ok ? null : ($error ?: 'HTTP ' . $httpCode),
             'raw' => $response,
         ];
     }
