@@ -62,17 +62,17 @@ $messageType = '';
 if ($requestMethod === 'POST') {
     switch ($action) {
         case 'save':
-            // api_url is intentionally NOT user-editable — it's pinned
-            // to the production Spamtroll endpoint in SpamtrollConfig's
-            // defaults. Anything the client sends for `api_url` is
-            // ignored to keep the settings UI simple and prevent
-            // misconfiguration.
+            // api_url / log_level / timeout are intentionally NOT
+            // user-editable — they're pinned to safe defaults in
+            // SpamtrollConfig to keep the settings UI minimal for
+            // non-technical admins. Only the API key, on/off switch
+            // and whitelists/blacklists are under user control.
             $newConfig = [
                 'enabled' => isset($_POST['enabled']) && $_POST['enabled'] === '1',
                 'api_key' => trim($_POST['api_key'] ?? ''),
                 'api_url' => SpamtrollConfig::defaultApiUrl(),
-                'log_level' => $_POST['log_level'] ?? 'info',
-                'timeout' => (int)($_POST['timeout'] ?? 5),
+                'log_level' => 'info',
+                'timeout' => 5,
                 'whitelist' => trim($_POST['whitelist'] ?? ''),
                 'blacklist' => trim($_POST['blacklist'] ?? ''),
             ];
@@ -868,25 +868,6 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <label for="api_key">API Key</label>
                     <input type="password" id="api_key" name="api_key" value="<?= htmlspecialchars($config['api_key']) ?>" placeholder="Enter your Spamtroll API key">
                     <p class="help">Get your API key from <a href="https://spamtroll.io/dashboard" target="_blank">spamtroll.io/dashboard</a></p>
-                </div>
-
-                <div class="row">
-                    <div class="col-6">
-                        <div class="form-group">
-                            <label for="log_level">Log Level</label>
-                            <select id="log_level" name="log_level">
-                                <option value="error" <?= $config['log_level'] === 'error' ? 'selected' : '' ?>>Error only</option>
-                                <option value="info" <?= $config['log_level'] === 'info' ? 'selected' : '' ?>>Info</option>
-                                <option value="debug" <?= $config['log_level'] === 'debug' ? 'selected' : '' ?>>Debug</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <div class="form-group">
-                            <label for="timeout">API Timeout (seconds)</label>
-                            <input type="number" id="timeout" name="timeout" value="<?= $config['timeout'] ?>" min="1" max="30">
-                        </div>
-                    </div>
                 </div>
 
                 <div class="row">

@@ -17,7 +17,10 @@ MAX_BODY_SIZE=50000  # 50KB limit for body in API call
 # Default config values
 ENABLED="false"
 API_KEY=""
-API_URL="https://api.spamtroll.io/api/v1/scan/check"
+# Base URL only. The /scan/check endpoint is appended at the curl call
+# below. Stored value in config file is ignored — the admin panel no
+# longer exposes an api_url field.
+API_URL="https://api.spamtroll.io/api/v1"
 LOG_LEVEL="info"  # debug, info, error
 WHITELIST=""
 BLACKLIST=""
@@ -145,12 +148,12 @@ if [[ -z "$PAYLOAD" ]]; then
     exit 0  # Fail open
 fi
 
-# Call API
+# Call API — append /scan/check to the base URL
 RESPONSE=$(curl -s -m "$TIMEOUT" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: $API_KEY" \
     -d "$PAYLOAD" \
-    "$API_URL" 2>/dev/null)
+    "${API_URL%/}/scan/check" 2>/dev/null)
 
 CURL_EXIT=$?
 if [[ $CURL_EXIT -ne 0 ]]; then
@@ -158,9 +161,12 @@ if [[ $CURL_EXIT -ne 0 ]]; then
     exit 0  # Fail open
 fi
 
-# Parse response
-STATUS=$(echo "$RESPONSE" | jq -r '.status // "safe"' 2>/dev/null)
-SCORE=$(echo "$RESPONSE" | jq -r '.spam_score // 0' 2>/dev/null)
+# Parse response. Backend wraps successful replies as
+#   {"success": true, "data": {"status": "...", "spam_score": N, ...}}
+# so we unwrap .data.*. Fall back to top-level keys only to stay
+# compatible with older API shapes.
+STATUS=$(echo "$RESPONSE" | jq -r '.data.status // .status // "safe"' 2>/dev/null)
+SCORE=$(echo "$RESPONSE" | jq -r '.data.spam_score // .spam_score // 0' 2>/dev/null)
 
 # Handle empty/null values
 [[ -z "$STATUS" || "$STATUS" == "null" ]] && STATUS="safe"
