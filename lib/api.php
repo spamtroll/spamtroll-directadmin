@@ -24,7 +24,12 @@ class SpamtrollAPI
         $config = SpamtrollConfig::load();
 
         $this->apiKey = $apiKey ?? $config['api_key'];
-        $this->baseUrl = $baseUrl ?? preg_replace('#/[^/]+$#', '', $config['api_url']);
+        // $config['api_url'] is already a base URL (…/api/v1). Earlier
+        // versions of this class stripped the last path segment here to
+        // accept both "…/api/v1" and "…/api/v1/scan/check" inputs, but
+        // once api_url was pinned to the base, that strip turned
+        // /api/v1 into /api — giving 404s on every request.
+        $this->baseUrl = $baseUrl ?? $config['api_url'];
         $this->timeout = $config['timeout'] ?? 10;
     }
 
