@@ -17,7 +17,11 @@ class SpamtrollConfig
     private static $defaults = [
         'enabled' => false,
         'api_key' => '',
-        'api_url' => 'https://api.spamtroll.io/api/v1/scan/check',
+        // Base URL only — endpoints like /scan/check are appended by api.php.
+        // If the user pastes the full /scan/check URL here, normalizeBaseUrl()
+        // in load() will strip the suffix so we don't end up with
+        // https://api.spamtroll.io/api/v1/scan/check/scan/check.
+        'api_url' => 'https://api.spamtroll.io/api/v1',
         'log_level' => 'info',
         'timeout' => 5,
         'whitelist' => '',
@@ -61,6 +65,14 @@ class SpamtrollConfig
                     $config[$key] = ($value === 'true');
                 } elseif ($key === 'timeout') {
                     $config[$key] = (int)$value;
+                } elseif ($key === 'api_url') {
+                    // Normalize: strip trailing slashes and a trailing
+                    // `/scan/check` if the user pasted the full endpoint
+                    // URL instead of the base. Prevents double-appending
+                    // in SpamtrollAPI::request().
+                    $value = rtrim($value, '/');
+                    $value = preg_replace('#/scan/check$#', '', $value);
+                    $config[$key] = $value;
                 } else {
                     $config[$key] = $value;
                 }
