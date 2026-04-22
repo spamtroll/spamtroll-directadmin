@@ -33,6 +33,24 @@ TO_HEADER="${4:-}"
 SUBJECT="${5:-}"
 MESSAGE_ID="${6:-}"
 MESSAGE_BODY="${7:-}"
+# Pipe-separated auth bundle — "spf=...|auth=...|dkim=...". Parsed into
+# fields for the API payload so legit DKIM/SPF-signed mail can be
+# credited with a negative symbol.
+AUTH_BUNDLE="${8:-}"
+
+parse_auth_field() {
+    # Extract `<key>=...` up to the next `|` separator or end of string.
+    local key="$1"
+    local val="${AUTH_BUNDLE#*${key}=}"
+    # If the bundle didn't contain the key, ${val} == ${AUTH_BUNDLE}; reset.
+    [[ "$val" == "$AUTH_BUNDLE" ]] && { echo ""; return; }
+    val="${val%%|*}"
+    echo "$val"
+}
+
+SPF_HEADER=$(parse_auth_field "spf")
+AUTH_RESULTS=$(parse_auth_field "auth")
+DKIM_SIGNATURE=$(parse_auth_field "dkim")
 
 # Logging function
 log() {
@@ -130,6 +148,9 @@ PAYLOAD=$(jq -n \
     --arg to "$TO_HEADER" \
     --arg subject "$SUBJECT" \
     --arg message_id "$MESSAGE_ID" \
+    --arg spf "$SPF_HEADER" \
+    --arg auth_results "$AUTH_RESULTS" \
+    --arg dkim "$DKIM_SIGNATURE" \
     '{
         content: $content,
         source: $source,
@@ -139,7 +160,10 @@ PAYLOAD=$(jq -n \
             from: $from,
             to: $to,
             subject: $subject,
-            message_id: $message_id
+            message_id: $message_id,
+            "received-spf": $spf,
+            "authentication-results": $auth_results,
+            "dkim-signature": $dkim
         }
     }' 2>/dev/null)
 
