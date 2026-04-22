@@ -525,50 +525,62 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
             flex: 1;
         }
 
+        /* Hourly bar chart: bars on top row, labels on a separate
+           row below so every bar has the same max-height (earlier the
+           labels were INSIDE .bar-group, which made bars in label-less
+           columns visibly taller than their label-carrying neighbours). */
         .hourly-chart {
+            padding: 0 4px;
+        }
+
+        .hourly-chart .chart-bars {
             display: flex;
             align-items: flex-end;
             gap: 4px;
             height: 120px;
-            padding: 0 4px;
+        }
+
+        .hourly-chart .chart-labels {
+            display: flex;
+            gap: 4px;
+            margin-top: 6px;
         }
 
         .hourly-chart .bar-group {
             flex: 1;
             display: flex;
-            flex-direction: column;
-            align-items: center;
+            justify-content: center;
             height: 100%;
-            justify-content: flex-end;
         }
 
         .hourly-chart .bar-stack {
-            width: 100%;
+            width: 70%;
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
-            flex: 1;
         }
 
         .hourly-chart .bar-blocked {
             background: var(--danger);
             border-radius: 2px 2px 0 0;
-            min-width: 4px;
+            min-height: 2px;
         }
 
         .hourly-chart .bar-safe {
             background: var(--success);
-            min-width: 4px;
+            min-height: 2px;
         }
 
         .hourly-chart .bar-safe:first-child {
             border-radius: 2px 2px 0 0;
         }
 
-        .hourly-chart .bar-label {
+        .hourly-chart .chart-label {
+            flex: 1;
+            text-align: center;
             font-size: 10px;
             color: var(--gray-600);
-            margin-top: 4px;
+            line-height: 1;
         }
 
         .chart-legend {
@@ -759,27 +771,31 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
             }
             ?>
             <div class="hourly-chart">
-                <?php for ($h = 0; $h < 24; $h++):
-                    $key = sprintf('%02d:00', $h);
-                    $safe = $byHour[$key]['safe'] ?? 0;
-                    $blocked = $byHour[$key]['blocked'] ?? 0;
-                    $safeHeight = $maxHourly > 0 ? round(($safe / $maxHourly) * 100) : 0;
-                    $blockedHeight = $maxHourly > 0 ? round(($blocked / $maxHourly) * 100) : 0;
-                ?>
-                <div class="bar-group">
-                    <div class="bar-stack">
-                        <?php if ($blocked > 0): ?>
-                        <div class="bar-blocked" style="height: <?= $blockedHeight ?>%" title="<?= $key ?>: <?= $blocked ?> blocked"></div>
-                        <?php endif; ?>
-                        <?php if ($safe > 0): ?>
-                        <div class="bar-safe" style="height: <?= $safeHeight ?>%" title="<?= $key ?>: <?= $safe ?> safe"></div>
-                        <?php endif; ?>
+                <div class="chart-bars">
+                    <?php for ($h = 0; $h < 24; $h++):
+                        $key = sprintf('%02d:00', $h);
+                        $safe = $byHour[$key]['safe'] ?? 0;
+                        $blocked = $byHour[$key]['blocked'] ?? 0;
+                        $safeHeight = $maxHourly > 0 ? round(($safe / $maxHourly) * 100) : 0;
+                        $blockedHeight = $maxHourly > 0 ? round(($blocked / $maxHourly) * 100) : 0;
+                    ?>
+                    <div class="bar-group">
+                        <div class="bar-stack">
+                            <?php if ($blocked > 0): ?>
+                            <div class="bar-blocked" style="height: <?= $blockedHeight ?>%" title="<?= $key ?>: <?= $blocked ?> blocked"></div>
+                            <?php endif; ?>
+                            <?php if ($safe > 0): ?>
+                            <div class="bar-safe" style="height: <?= $safeHeight ?>%" title="<?= $key ?>: <?= $safe ?> safe"></div>
+                            <?php endif; ?>
+                        </div>
                     </div>
-                    <?php if ($h % 3 === 0): ?>
-                    <div class="bar-label"><?= $h ?></div>
-                    <?php endif; ?>
+                    <?php endfor; ?>
                 </div>
-                <?php endfor; ?>
+                <div class="chart-labels">
+                    <?php for ($h = 0; $h < 24; $h++): ?>
+                    <div class="chart-label"><?= $h % 3 === 0 ? $h : '' ?></div>
+                    <?php endfor; ?>
+                </div>
             </div>
             <div class="chart-legend">
                 <span class="legend-safe">Safe</span>

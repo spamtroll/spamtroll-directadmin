@@ -65,14 +65,17 @@ fi
 
 echo -e "${GREEN}Dependencies OK${NC}"
 
-# Install spamtroll-check script
+# Install spamtroll-check script.
+# NOTE: we deliberately use a symlink into the plugin directory rather
+# than a copy. DA plugin updates rewrite $PLUGIN_DIR/exim/spamtroll-check
+# in place — a copy at /usr/local/bin/ would keep running the old code
+# (e.g. an old API URL), silently breaking the Exim hook for hours.
 echo ""
 echo "Installing spamtroll-check script..."
 if [[ -f "$PLUGIN_DIR/exim/spamtroll-check" ]]; then
-    cp "$PLUGIN_DIR/exim/spamtroll-check" "$SPAMTROLL_BIN"
-    chmod 755 "$SPAMTROLL_BIN"
-    chown root:root "$SPAMTROLL_BIN"
-    echo -e "${GREEN}Installed: $SPAMTROLL_BIN${NC}"
+    chmod 755 "$PLUGIN_DIR/exim/spamtroll-check"
+    ln -sf "$PLUGIN_DIR/exim/spamtroll-check" "$SPAMTROLL_BIN"
+    echo -e "${GREEN}Installed: $SPAMTROLL_BIN → $PLUGIN_DIR/exim/spamtroll-check${NC}"
 else
     echo -e "${RED}Error: spamtroll-check script not found in plugin directory${NC}"
     exit 1
