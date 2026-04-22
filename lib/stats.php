@@ -163,6 +163,8 @@ class SpamtrollStats
             $lastEntries[] = [
                 'timestamp' => $matches[1],
                 'from' => $data['from'] ?? '',
+                'to' => $data['to'] ?? '',
+                'subject' => $data['subject'] ?? '',
                 'ip' => $data['ip'] ?? '',
                 'status' => $data['status'],
                 'score' => $data['score'] ?? 0,
@@ -196,18 +198,22 @@ class SpamtrollStats
     {
         $data = [];
 
-        // Extract key=value pairs
-        if (preg_match('/from=([^\s]+)/', $message, $m)) {
-            $data['from'] = $m[1];
-        }
-        if (preg_match('/ip=([^\s]+)/', $message, $m)) {
-            $data['ip'] = $m[1];
-        }
-        if (preg_match('/status=([^\s]+)/', $message, $m)) {
-            $data['status'] = $m[1];
-        }
-        if (preg_match('/score=([^\s]+)/', $message, $m)) {
-            $data['score'] = floatval($m[1]);
+        // Each field is either key="quoted value with spaces" or key=bareword.
+        // Matches both forms via alternation — the first capture group wins
+        // for quoted values, the second for bare ones.
+        $pattern = '/(\w+)=(?:"([^"]*)"|(\S+))/';
+        if (preg_match_all($pattern, $message, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $m) {
+                $key = $m[1];
+                $value = $m[2] !== '' ? $m[2] : ($m[3] ?? '');
+                switch ($key) {
+                    case 'score':
+                        $data['score'] = floatval($value);
+                        break;
+                    default:
+                        $data[$key] = $value;
+                }
+            }
         }
 
         return $data;

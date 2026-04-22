@@ -812,6 +812,8 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                             <tr>
                                 <th>Time</th>
                                 <th>From</th>
+                                <th>To</th>
+                                <th>Subject</th>
                                 <th>Status</th>
                                 <th>Score</th>
                             </tr>
@@ -819,8 +821,13 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                         <tbody>
                             <?php foreach (array_slice($stats['last_entries'] ?? [], 0, 25) as $entry): ?>
                             <tr>
-                                <td><?= htmlspecialchars($entry['timestamp']) ?></td>
-                                <td><?= htmlspecialchars($entry['from']) ?></td>
+                                <td style="white-space: nowrap; font-size: 12px;"><?= htmlspecialchars($entry['timestamp']) ?></td>
+                                <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                    title="<?= htmlspecialchars($entry['from']) ?>"><?= htmlspecialchars($entry['from']) ?></td>
+                                <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                    title="<?= htmlspecialchars($entry['to'] ?? '') ?>"><?= htmlspecialchars($entry['to'] ?? '') ?></td>
+                                <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                    title="<?= htmlspecialchars($entry['subject'] ?? '') ?>"><?= htmlspecialchars($entry['subject'] ?? '') ?></td>
                                 <td>
                                     <span class="status-badge status-<?= $entry['status'] === 'blocked' ? 'disabled' : 'enabled' ?>">
                                         <?= strtoupper($entry['status']) ?>
@@ -831,7 +838,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                             <?php endforeach; ?>
                             <?php if (empty($stats['last_entries'])): ?>
                             <tr>
-                                <td colspan="4" style="text-align: center; color: var(--gray-600);">No recent activity</td>
+                                <td colspan="6" style="text-align: center; color: var(--gray-600);">No recent activity</td>
                             </tr>
                             <?php endif; ?>
                         </tbody>

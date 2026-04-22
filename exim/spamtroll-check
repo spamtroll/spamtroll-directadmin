@@ -173,7 +173,12 @@ SCORE=$(echo "$RESPONSE" | jq -r '.data.spam_score // .spam_score // 0' 2>/dev/n
 [[ -z "$SCORE" || "$SCORE" == "null" ]] && SCORE="0"
 
 # Log result
-log "info" "from=${SENDER_EMAIL} ip=${SENDER_IP} status=${STATUS} score=${SCORE}"
+# Strip any whitespace/newlines from TO and SUBJECT headers — Exim
+# may pass multi-line or folded header values.
+TO_CLEAN=$(echo -n "$TO_HEADER" | tr -d '\n\r' | head -c 200)
+SUBJECT_CLEAN=$(echo -n "$SUBJECT" | tr -d '\n\r' | head -c 200)
+
+log "info" "from=${SENDER_EMAIL} to=\"${TO_CLEAN}\" subject=\"${SUBJECT_CLEAN}\" ip=${SENDER_IP} status=${STATUS} score=${SCORE}"
 
 # Return based on status
 if [[ "$STATUS" == "blocked" ]]; then
