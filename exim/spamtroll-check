@@ -135,7 +135,7 @@ PAYLOAD=$(jq -n \
         source: $source,
         ip_address: $ip,
         email: $email,
-        email_headers: {
+        headers: {
             from: $from,
             to: $to,
             subject: $subject,
