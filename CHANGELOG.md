@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Quota-aware fail-open** in the Exim ACL hook (`exim/spamtroll-check`). The script now captures the HTTP status code via `curl -w "\n%{http_code}"`; when the API returns 402 the script appends a one-line entry to `${LOG_DIR}/quota_skipped.log`, logs at WARN, and exits 0 (accept the message without scanning). Blocking legitimate mail because the user's plan ran out of paid scans was the wrong call.
+- Admin panel now reads `quota_skipped.log` and shows a warning banner with the trailing-7-day count, the most recent timestamp, and an "Upgrade your plan →" CTA. Hidden when there are no entries in the window so a healthy account doesn't see it.
 - Professional README.md with installation, configuration, and usage documentation
 - MIT License
 - **W6**: Pluggable menu support for DirectAdmin Evolution skin (images/menu.json)

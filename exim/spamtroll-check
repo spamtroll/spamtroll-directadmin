@@ -172,8 +172,12 @@ if [[ -z "$PAYLOAD" ]]; then
     exit 0  # Fail open
 fi
 
-# Call API — append /scan/check to the base URL
-RESPONSE=$(curl -s -m "$TIMEOUT" \
+# Call API — append /scan/check to the base URL.
+# -w "\n%{http_code}" appends the status code on its own line so we
+# can detect HTTP 402 (QUOTA_EXCEEDED) without parsing the body —
+# the backend may send an empty / malformed body in pathological
+# cases and we still need to fail-open cleanly.
+HTTP_RESPONSE=$(curl -s -m "$TIMEOUT" -w "\n%{http_code}" \
     -H "Content-Type: application/json" \
     -H "X-API-Key: $API_KEY" \
     -d "$PAYLOAD" \
@@ -183,6 +187,24 @@ CURL_EXIT=$?
 if [[ $CURL_EXIT -ne 0 ]]; then
     log "error" "API call failed: curl exit=$CURL_EXIT"
     exit 0  # Fail open
+fi
+
+HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
+RESPONSE=$(echo "$HTTP_RESPONSE" | sed '$d')
+
+# Quota exhausted — record one line in our skipped log and let the
+# message through. The user's plan ran out of daily scans, blocking
+# legitimate mail because of a billing condition is the wrong call.
+# The log file is rotated by the spamtroll-logrotate script that
+# ships with this plugin; the DA admin module reads it for the
+# "X messages skipped — upgrade your plan" notice.
+if [[ "$HTTP_CODE" == "402" ]]; then
+    USAGE=$(echo "$RESPONSE" | jq -c '.error.usage // {}' 2>/dev/null)
+    log "warn" "quota_exceeded from=${SENDER_EMAIL} to=\"${TO_HEADER}\" usage=${USAGE}"
+    SKIP_LOG="${LOG_DIR:-/var/log/spamtroll}/quota_skipped.log"
+    mkdir -p "$(dirname "$SKIP_LOG")" 2>/dev/null
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ${SENDER_EMAIL} ${USAGE}" >> "$SKIP_LOG" 2>/dev/null
+    exit 0  # Fail open — accept the message without scanning
 fi
 
 # Parse response. Backend wraps successful replies as

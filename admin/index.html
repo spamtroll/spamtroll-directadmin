@@ -729,6 +729,41 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
         </div>
         <?php endif; ?>
 
+        <?php
+        // Quota-skipped panel — surfaces "X messages were not scanned
+        // because daily quota was exhausted" with an upgrade CTA.
+        // Only shown when there's at least one entry in the trailing
+        // 7 days, otherwise stays out of the way.
+        $quotaSkipLog = (defined('LOG_DIR') ? LOG_DIR : '/var/log/spamtroll') . '/quota_skipped.log';
+        $quotaSkipCount = 0;
+        $quotaSkipLast = '';
+        if (is_readable($quotaSkipLog)) {
+            $sevenDaysAgo = strtotime('-7 days');
+            $fp = @fopen($quotaSkipLog, 'r');
+            if ($fp) {
+                while (($line = fgets($fp)) !== false) {
+                    $tsStr = strtok($line, ' ');
+                    if ($tsStr !== false) {
+                        $ts = strtotime($tsStr);
+                        if ($ts !== false && $ts >= $sevenDaysAgo) {
+                            $quotaSkipCount++;
+                            $quotaSkipLast = $tsStr;
+                        }
+                    }
+                }
+                fclose($fp);
+            }
+        }
+        if ($quotaSkipCount > 0):
+        ?>
+        <div class="alert alert-warning" style="margin-bottom: 16px;">
+            <strong><?= $quotaSkipCount ?> message<?= $quotaSkipCount === 1 ? '' : 's' ?> were not scanned in the last 7 days</strong> —
+            your Spamtroll daily quota was exhausted, so they were allowed through unscanned (fail-open). The most recent skip was at <?= htmlspecialchars($quotaSkipLast) ?>.
+            <br />
+            <a href="https://spamtroll.io/dashboard/billing" target="_blank" rel="noopener" class="btn btn-primary" style="margin-top: 8px; display: inline-block;">Upgrade your plan →</a>
+        </div>
+        <?php endif; ?>
+
         <?php if ($action === 'dashboard'): ?>
         <!-- Dashboard -->
         <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
