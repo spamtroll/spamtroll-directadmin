@@ -7,6 +7,12 @@
 #
 
 set -e
+set -o pipefail
+
+# DirectAdmin shows the plugin's update output only when something goes
+# wrong, and `set -e` exits silently. Without this trap a failure looked
+# to the admin exactly like a successful update.
+trap 'echo "Spamtroll update FAILED at line $LINENO (exit $?). The plugin on disk may be newer than the installed ACL; re-run scripts/update.sh." >&2' ERR
 
 # Paths
 PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
@@ -29,13 +35,20 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Update spamtroll-check script
+# Update spamtroll-check script.
+#
+# install.sh deliberately symlinks $SPAMTROLL_BIN at the copy inside the
+# plugin directory, so that an update to the plugin takes effect without
+# a second copy step. `cp` follows that symlink and therefore copied the
+# file onto itself — GNU cp refuses with "are the same file" and exits 1,
+# and `set -e` killed the script right here, before the ACL, logrotate
+# and Exim rebuild below. Every update since was a no-op on the ACL.
+# Re-link instead, matching install.sh.
 echo "Updating spamtroll-check script..."
 if [[ -f "$PLUGIN_DIR/exim/spamtroll-check" ]]; then
-    cp "$PLUGIN_DIR/exim/spamtroll-check" "$SPAMTROLL_BIN"
-    chmod 755 "$SPAMTROLL_BIN"
-    chown root:root "$SPAMTROLL_BIN"
-    echo -e "${GREEN}Updated: $SPAMTROLL_BIN${NC}"
+    chmod 755 "$PLUGIN_DIR/exim/spamtroll-check"
+    ln -sfn "$PLUGIN_DIR/exim/spamtroll-check" "$SPAMTROLL_BIN"
+    echo -e "${GREEN}Updated: $SPAMTROLL_BIN -> $PLUGIN_DIR/exim/spamtroll-check${NC}"
 else
     echo -e "${YELLOW}Warning: Source file not found, skipping${NC}"
 fi
@@ -52,6 +65,7 @@ if [[ -f "$PLUGIN_DIR/exim/acl_check_message.pre.conf" ]]; then
     fi
     cp "$PLUGIN_DIR/exim/acl_check_message.pre.conf" "$EXIM_ACL_FILE"
     chmod 644 "$EXIM_ACL_FILE"
+    chown root:root "$EXIM_ACL_FILE"
     echo -e "${GREEN}Updated: $EXIM_ACL_FILE${NC}"
 else
     echo -e "${YELLOW}Warning: Source file not found, skipping${NC}"
