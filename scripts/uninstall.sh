@@ -56,8 +56,33 @@ echo "Removing Exim ACL configuration..."
 if [[ -f "$EXIM_ACL_FILE" ]]; then
     # Check if this is our ACL file
     if grep -q "Spamtroll" "$EXIM_ACL_FILE" 2>/dev/null; then
-        rm -f "$EXIM_ACL_FILE"
-        echo -e "${GREEN}Removed: $EXIM_ACL_FILE${NC}"
+        # /etc/exim.acl_check_message.pre.conf is a documented
+        # DirectAdmin extension point, not a file that belongs to this
+        # plugin: an admin may well have had their own rules there
+        # before install.sh overwrote it. install.sh keeps a timestamped
+        # backup, so put the admin's rules back rather than leaving the
+        # server without them.
+        #
+        # Backups made by update.sh contain our own ACL, so skip those —
+        # restoring one would leave a Spamtroll ACL behind after an
+        # uninstall. Timestamps are fixed-width, so the glob is in
+        # chronological order and the last match is the newest.
+        ORIGINAL_ACL=""
+        for backup in "${EXIM_ACL_FILE}".backup.*; do
+            [[ -f "$backup" ]] || continue
+            grep -q "Spamtroll" "$backup" 2>/dev/null && continue
+            ORIGINAL_ACL="$backup"
+        done
+
+        if [[ -n "$ORIGINAL_ACL" ]]; then
+            cp "$ORIGINAL_ACL" "$EXIM_ACL_FILE"
+            chmod 644 "$EXIM_ACL_FILE"
+            chown root:root "$EXIM_ACL_FILE"
+            echo -e "${GREEN}Restored pre-install ACL from: $ORIGINAL_ACL${NC}"
+        else
+            rm -f "$EXIM_ACL_FILE"
+            echo -e "${GREEN}Removed: $EXIM_ACL_FILE${NC}"
+        fi
     else
         echo -e "${YELLOW}Warning: ACL file exists but was modified. Keeping for safety.${NC}"
     fi

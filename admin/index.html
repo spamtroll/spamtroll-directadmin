@@ -49,6 +49,37 @@ foreach (explode('; ', $cookieStr) as $pair) {
 // plugin; it's adequately protected by DA's session layer.
 $csrfToken = ''; // kept for template compatibility (rendered as empty hidden input)
 
+/**
+ * The verdicts the check script can write to the log, and the CSS class
+ * each one renders with.
+ *
+ * The log line is assembled from message headers, so `status` is reader
+ * input, not our own: a `To:` header carrying a quote used to be able to
+ * inject a `status=` field that the log parser picked up (it keeps the
+ * last occurrence of a repeated key) and the dashboard then echoed into
+ * the page unescaped, inside the DirectAdmin admin's session. The check
+ * script now strips quotes on the way into the log; this is the second
+ * layer — nothing but a known verdict ever reaches the markup.
+ */
+const SPAMTROLL_STATUS_CLASSES = [
+    'blocked'    => 'status-disabled',
+    'suspicious' => 'status-suspicious',
+    'safe'       => 'status-enabled',
+    'error'      => 'status-disabled',
+];
+
+function spamtrollStatusLabel($status): string
+{
+    $status = is_string($status) ? strtolower($status) : '';
+    return isset(SPAMTROLL_STATUS_CLASSES[$status]) ? strtoupper($status) : 'UNKNOWN';
+}
+
+function spamtrollStatusClass($status): string
+{
+    $status = is_string($status) ? strtolower($status) : '';
+    return SPAMTROLL_STATUS_CLASSES[$status] ?? 'status-badge';
+}
+
 // Get action from request
 $action = $_GET['action'] ?? 'dashboard';
 
@@ -137,7 +168,22 @@ if ($requestMethod === 'POST') {
                     $message = "Test result: {$status} (score: {$score})";
                     $messageType = $status === 'blocked' ? 'error' : 'success';
                 } else {
+                    // $result['error'] is always a string now — the API
+                    // has four different error-body shapes and two of
+                    // them put a boolean in `error`, which used to be
+                    // concatenated here as "Test failed: 1".
                     $message = 'Test failed: ' . ($result['error'] ?? 'Unknown error');
+                    if (!empty($result['usage']['limit'])) {
+                        $message .= sprintf(
+                            ' (%s of %s scans used on the %s plan)',
+                            $result['usage']['current'] ?? '?',
+                            $result['usage']['limit'],
+                            $result['usage']['plan'] ?? '?'
+                        );
+                    }
+                    if (!empty($result['retry_after'])) {
+                        $message .= ' Retry after ' . $result['retry_after'] . 's.';
+                    }
                     $messageType = 'error';
                 }
             }
@@ -451,6 +497,12 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
             border: 1px solid #fecaca;
         }
 
+        .alert-warning {
+            background: #fef3c7;
+            color: #92400e;
+            border: 1px solid #fde68a;
+        }
+
         .status-badge {
             display: inline-block;
             padding: 4px 8px;
@@ -467,6 +519,11 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
         .status-disabled {
             background: #fee2e2;
             color: #991b1b;
+        }
+
+        .status-suspicious {
+            background: #fef3c7;
+            color: #92400e;
         }
 
         .log-viewer {
@@ -724,7 +781,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
         </div>
 
         <?php if ($message): ?>
-        <div class="alert alert-<?= $messageType ?>">
+        <div class="alert alert-<?= htmlspecialchars($messageType === 'success' ? 'success' : 'error', ENT_QUOTES) ?>">
             <?= htmlspecialchars($message) ?>
         </div>
         <?php endif; ?>
@@ -757,7 +814,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
         if ($quotaSkipCount > 0):
         ?>
         <div class="alert alert-warning" style="margin-bottom: 16px;">
-            <strong><?= $quotaSkipCount ?> message<?= $quotaSkipCount === 1 ? '' : 's' ?> were not scanned in the last 7 days</strong> —
+            <strong><?= (int)$quotaSkipCount ?> message<?= $quotaSkipCount === 1 ? '' : 's' ?> were not scanned in the last 7 days</strong> —
             your Spamtroll daily quota was exhausted, so they were allowed through unscanned (fail-open). The most recent skip was at <?= htmlspecialchars($quotaSkipLast) ?>.
             <br />
             <a href="https://spamtroll.io/dashboard/billing" target="_blank" rel="noopener" class="btn btn-primary" style="margin-top: 8px; display: inline-block;">Upgrade your plan →</a>
@@ -817,10 +874,10 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                     <div class="bar-group">
                         <div class="bar-stack">
                             <?php if ($blocked > 0): ?>
-                            <div class="bar-blocked" style="height: <?= $blockedHeight ?>%" title="<?= $key ?>: <?= $blocked ?> blocked"></div>
+                            <div class="bar-blocked" style="height: <?= (int)$blockedHeight ?>%" title="<?= htmlspecialchars($key, ENT_QUOTES) ?>: <?= (int)$blocked ?> blocked"></div>
                             <?php endif; ?>
                             <?php if ($safe > 0): ?>
-                            <div class="bar-safe" style="height: <?= $safeHeight ?>%" title="<?= $key ?>: <?= $safe ?> safe"></div>
+                            <div class="bar-safe" style="height: <?= (int)$safeHeight ?>%" title="<?= htmlspecialchars($key, ENT_QUOTES) ?>: <?= (int)$safe ?> safe"></div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -864,8 +921,8 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                                 <td style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                     title="<?= htmlspecialchars($entry['subject'] ?? '') ?>"><?= htmlspecialchars($entry['subject'] ?? '') ?></td>
                                 <td>
-                                    <span class="status-badge status-<?= $entry['status'] === 'blocked' ? 'disabled' : 'enabled' ?>">
-                                        <?= strtoupper($entry['status']) ?>
+                                    <span class="status-badge <?= spamtrollStatusClass($entry['status'] ?? '') ?>">
+                                        <?= spamtrollStatusLabel($entry['status'] ?? '') ?>
                                     </span>
                                 </td>
                                 <td><?= htmlspecialchars((string)($entry['score'] ?? '0')) ?></td>
@@ -988,7 +1045,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
             <table>
                 <tr>
                     <td><strong>Config File</strong></td>
-                    <td><?= SpamtrollConfig::getConfigFile() ?></td>
+                    <td><?= htmlspecialchars(SpamtrollConfig::getConfigFile()) ?></td>
                     <td>
                         <?php if (SpamtrollConfig::exists()): ?>
                         <span class="status-badge status-enabled">EXISTS</span>
@@ -1000,7 +1057,7 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                 </tr>
                 <tr>
                     <td><strong>Log File</strong></td>
-                    <td><?= SpamtrollConfig::getLogFile() ?></td>
+                    <td><?= htmlspecialchars(SpamtrollConfig::getLogFile()) ?></td>
                     <td>
                         <?php if (file_exists(SpamtrollConfig::getLogFile())): ?>
                         <span class="status-badge status-enabled">EXISTS</span>

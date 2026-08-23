@@ -75,25 +75,49 @@ Incoming Email
 Exim ACL (acl_check_message.pre.conf)
      |
      v
-/usr/local/bin/spamtroll-check
+/usr/local/bin/spamtroll-check   (headers from the ACL, body from the spool)
      |
      v
 Spamtroll API (RETVec + GPT analysis)
      |
-     +---> spam detected  ---> REJECT (550)
-     +---> clean          ---> ACCEPT + X-Spamtroll-Status: clean
-     +---> API error      ---> ACCEPT (fail-open)
+     +---> blocked     ---> ACCEPT + X-Spamtroll-Status: spam       + X-Spamtroll-Score
+     +---> suspicious  ---> ACCEPT + X-Spamtroll-Status: suspicious + X-Spamtroll-Score
+     +---> safe        ---> ACCEPT + X-Spamtroll-Status: clean      + X-Spamtroll-Score
+     +---> no verdict  ---> ACCEPT, no header at all
 ```
 
-Authenticated users and trusted relay hosts bypass the check entirely.
+**The plugin never rejects or defers a message.** The ACL contains no
+`deny` and no `defer`: verdicts are published as headers and users route
+on them with Sieve, Procmail or IMAP filters. Anything that is not a
+verdict — API outage, exhausted quota, HTTP error, missing script —
+leaves the message with no `X-Spamtroll-*` header at all, rather than
+claiming it is clean. Losing correspondence to a filter outage is worse
+than letting spam through.
+
+Authenticated SMTP submissions and mail injected over loopback
+(Roundcube, `sendmail`, cron) are not sent to Spamtroll. They still go
+through everything else DirectAdmin puts in the DATA ACL — ClamAV,
+SpamAssassin, outbound limits.
 
 ## Admin Panel
 
 The admin panel is accessible at **DirectAdmin > Spamtroll Anti-Spam** (admin-level only).
 
 - **Dashboard** -- 24h email statistics (total, blocked, safe), recent activity, and top blocked domains
-- **Settings** -- Enable/disable filtering, API key, API URL, log level, timeout, and connection test
+- **Settings** -- Enable/disable filtering, API key, whitelist/blacklist, connection test, and a manual content test (API URL, log level and timeout are pinned to safe defaults and not user-editable)
 - **Logs** -- Real-time log viewer with color-coded entries (blocked, safe, error)
+
+## Testing
+
+```bash
+./tests/run-tests.sh          # exit-code contract, fail-open on every error path,
+                              # argv hygiene, payload shape (needs bash 4+, jq)
+php tests/api-error-shapes.php  # the four API error-body shapes
+```
+
+`tests/run-tests.sh` stubs `curl`, so it never touches the network and
+never touches an installed plugin. It needs bash 4+; on macOS run it
+under a container.
 
 ## Updating
 
