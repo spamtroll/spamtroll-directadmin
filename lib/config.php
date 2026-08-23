@@ -154,19 +154,34 @@ EOF;
             ];
         }
 
-        // Use the status endpoint for testing
-        $statusUrl = str_replace('/scan/check', '/scan/status', $config['api_url']);
+        // Use the status endpoint for testing.
+        //
+        // This used to be str_replace('/scan/check', '/scan/status', …),
+        // left over from when api_url held the full check URL. Since the
+        // value was pinned to the base URL the replace matched nothing,
+        // every test hit /api/v1 itself, and an admin with a perfectly
+        // good key was told "API returned HTTP 404".
+        $statusUrl = rtrim($config['api_url'], '/') . '/scan/status';
 
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $statusUrl,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 10,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_HTTPHEADER => [
                 'X-API-Key: ' . $config['api_key'],
                 'Content-Type: application/json',
             ],
         ]);
+        if (defined('CURLOPT_PROTOCOLS_STR')) {
+            curl_setopt($ch, CURLOPT_PROTOCOLS_STR, 'https');
+        } elseif (defined('CURLPROTO_HTTPS')) {
+            curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+        }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
