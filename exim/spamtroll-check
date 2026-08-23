@@ -1,56 +1,81 @@
 #!/bin/bash
 # Spamtroll spam check script for Exim
-# Called by Exim ACL to check incoming emails
+# Called by /etc/exim.acl_check_message.pre.conf for each incoming message.
 #
-# Usage: spamtroll-check <sender_ip> <sender_email> <from_header> <to_header> <subject> <message_id> <body>
+# Usage:
+#   spamtroll-check i<ip> s<sender> m<msgid> d<spool_dir> \
+#                   f<b64 From> t<b64 To> u<b64 Subject> n<b64 Message-Id> \
+#                   h<b64 raw header block> b<b64 truncated body>
+#
+# Every message-derived argument arrives base64-encoded behind a
+# one-letter marker. The marker keeps the argument non-empty (an
+# argument that expands to nothing is dropped by older Exim releases,
+# which would shift every following argument) and base64 contains no
+# whitespace or quotes (which would split an argument in two). See the
+# long comment in acl_check_message.pre.conf.
 #
 # Exit codes:
-#   0 = safe (accept email)
-#   1 = blocked (reject email)
-#   2 = error (accept email - fail open)
+#   0 = safe        (accept email)
+#   1 = blocked     (mark as spam)
+#   2 = error       (accept email — fail open)
+#   3 = suspicious  (mark as suspicious)
+#
+# On exit the script writes the numeric spam score, and nothing else, to
+# stdout; the ACL picks it up from $value for the X-Spamtroll-Score
+# header. Exim merges the child's stderr into the same stream, so stderr
+# is closed off below — all diagnostics go to $LOG_FILE instead.
+exec 2>/dev/null
 
-CONFIG_FILE="/usr/local/directadmin/plugins/spamtroll/data/spamtroll.conf"
-LOG_FILE="/var/log/spamtroll.log"
+# Paths. The env overrides exist so tests/run-tests.sh can drive the
+# script without touching the real installation; Exim gives ${run} the
+# environment, so nothing an attacker controls can reach them.
+CONFIG_FILE="${SPAMTROLL_CONFIG_FILE:-/usr/local/directadmin/plugins/spamtroll/data/spamtroll.conf}"
+LOG_FILE="${SPAMTROLL_LOG_FILE:-/var/log/spamtroll.log}"
 TIMEOUT=5
-MAX_BODY_SIZE=50000  # 50KB limit for body in API call
+MAX_CONTENT_SIZE=50000   # 50KB limit for the classified content
+# Ceiling for raw_message. Kept below Linux MAX_ARG_STRLEN (128KB per
+# environment entry) because the payload is handed to jq through the
+# environment; a larger message simply goes without raw_message.
+MAX_RAW_SIZE=120000
 
 # Default config values
 ENABLED="false"
 API_KEY=""
 # Base URL only. The /scan/check endpoint is appended at the curl call
-# below. Stored value in config file is ignored — the admin panel no
-# longer exposes an api_url field.
+# below. The value stored in the config file is deliberately ignored:
+# the admin panel no longer exposes an api_url field, and honouring the
+# file value would turn a config-file write into an API-key exfiltration
+# primitive (point the URL at an attacker's host, collect the header).
 API_URL="https://api.spamtroll.io/api/v1"
 LOG_LEVEL="info"  # debug, info, error
 WHITELIST=""
 BLACKLIST=""
 
-# Parse command line arguments
-SENDER_IP="${1:-}"
-SENDER_EMAIL="${2:-}"
-FROM_HEADER="${3:-}"
-TO_HEADER="${4:-}"
-SUBJECT="${5:-}"
-MESSAGE_ID="${6:-}"
-MESSAGE_BODY="${7:-}"
-# Pipe-separated auth bundle — "spf=...|auth=...|dkim=...". Parsed into
-# fields for the API payload so legit DKIM/SPF-signed mail can be
-# credited with a negative symbol.
-AUTH_BUNDLE="${8:-}"
-
-parse_auth_field() {
-    # Extract `<key>=...` up to the next `|` separator or end of string.
-    local key="$1"
-    local val="${AUTH_BUNDLE#*${key}=}"
-    # If the bundle didn't contain the key, ${val} == ${AUTH_BUNDLE}; reset.
-    [[ "$val" == "$AUTH_BUNDLE" ]] && { echo ""; return; }
-    val="${val%%|*}"
-    echo "$val"
+# Decode one marker-prefixed argument.
+b64arg() {
+    local raw="${1:1}"
+    [[ -z "$raw" ]] && return 0
+    printf '%s' "$raw" | base64 -d 2>/dev/null
 }
 
-SPF_HEADER=$(parse_auth_field "spf")
-AUTH_RESULTS=$(parse_auth_field "auth")
-DKIM_SIGNATURE=$(parse_auth_field "dkim")
+SENDER_IP="${1:1}"
+SENDER_EMAIL="${2:1}"
+MESSAGE_ID_EXIM="${3:1}"
+SPOOL_DIR="${4:1}"
+FROM_HEADER=$(b64arg "${5:-}")
+TO_HEADER=$(b64arg "${6:-}")
+SUBJECT=$(b64arg "${7:-}")
+MESSAGE_ID=$(b64arg "${8:-}")
+RAW_HEADERS=$(b64arg "${9:-}")
+BODY_FALLBACK=$(b64arg "${10:-}")
+
+# Strip characters that would let a sender forge fields in our own log
+# line — the admin panel parses `key="value"` pairs out of it, so an
+# unescaped quote in a To: or Subject: header lets the sender inject an
+# arbitrary key (e.g. status=) into a parsed record.
+log_safe() {
+    printf '%s' "$1" | tr -d '"\\\n\r' | tr -d '\000-\037' | head -c 200
+}
 
 # Logging function
 log() {
@@ -74,6 +99,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
         [[ -z "$key" ]] && continue
         # Remove quotes and whitespace
         key="${key// /}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
         value="${value#\"}"
         value="${value%\"}"
         value="${value#\'}"
@@ -81,7 +108,6 @@ if [[ -f "$CONFIG_FILE" ]]; then
         case "$key" in
             ENABLED)   ENABLED="$value" ;;
             API_KEY)   API_KEY="$value" ;;
-            API_URL)   API_URL="$value" ;;
             LOG_LEVEL) LOG_LEVEL="$value" ;;
             TIMEOUT)   TIMEOUT="$value" ;;
             WHITELIST) WHITELIST="$value" ;;
@@ -92,7 +118,19 @@ fi
 
 # Check if plugin is enabled
 if [[ "$ENABLED" != "true" ]] || [[ -z "$API_KEY" ]]; then
-    exit 0  # Not configured, allow email
+    exit 2  # Not configured — no verdict, message accepted unmarked
+fi
+
+# The API key and the timeout are both written into a curl config file
+# below. A stray quote or newline in either would let whoever can write
+# the config file inject arbitrary curl options, so both are validated
+# against the shape the panel produces before they are used at all.
+if [[ ! "$API_KEY" =~ ^[a-zA-Z0-9_-]{20,}$ ]]; then
+    log "error" "API key in $CONFIG_FILE has an unexpected format; not scanning"
+    exit 2  # Fail open
+fi
+if [[ ! "$TIMEOUT" =~ ^[0-9]+$ ]] || (( TIMEOUT < 1 || TIMEOUT > 15 )); then
+    TIMEOUT=5
 fi
 
 # Check whitelist (has priority — fail-open)
@@ -104,7 +142,7 @@ if [[ -n "$WHITELIST" && -n "$SENDER_EMAIL" ]]; then
         entry="${entry%% }"
         [[ -z "$entry" ]] && continue
         if [[ "${SENDER_EMAIL,,}" == "${entry,,}" ]] || [[ "${SENDER_DOMAIN,,}" == "${entry,,}" ]] || [[ "@${SENDER_DOMAIN,,}" == "${entry,,}" ]]; then
-            log "info" "from=${SENDER_EMAIL} ip=${SENDER_IP} status=safe reason=whitelist match=${entry}"
+            log "info" "from=$(log_safe "$SENDER_EMAIL") ip=$(log_safe "$SENDER_IP") status=safe reason=whitelist match=$(log_safe "$entry")"
             exit 0
         fi
     done
@@ -119,74 +157,233 @@ if [[ -n "$BLACKLIST" && -n "$SENDER_EMAIL" ]]; then
         entry="${entry%% }"
         [[ -z "$entry" ]] && continue
         if [[ "${SENDER_EMAIL,,}" == "${entry,,}" ]] || [[ "${SENDER_DOMAIN,,}" == "${entry,,}" ]] || [[ "@${SENDER_DOMAIN,,}" == "${entry,,}" ]]; then
-            log "info" "from=${SENDER_EMAIL} ip=${SENDER_IP} status=blocked reason=blacklist match=${entry}"
+            log "info" "from=$(log_safe "$SENDER_EMAIL") ip=$(log_safe "$SENDER_IP") status=blocked reason=blacklist match=$(log_safe "$entry")"
             exit 1
         fi
     done
 fi
 
-# Truncate body if too large
-if [[ ${#MESSAGE_BODY} -gt $MAX_BODY_SIZE ]]; then
-    MESSAGE_BODY="${MESSAGE_BODY:0:$MAX_BODY_SIZE}"
-    log "debug" "Body truncated to $MAX_BODY_SIZE bytes"
+# --- Message body -----------------------------------------------------
+#
+# $message_body, which the ACL passes as the `b` argument, is capped by
+# the main option message_body_visible — 500 bytes by default, and not
+# settable from an ACL file. Read the body from the spool instead: at
+# DATA-ACL time Exim has already fflush()ed and fsync()ed the -D file
+# (receive.c, right before acl_smtp_data runs), while the -H header file
+# does not exist yet. The first line of -D is "<msgid>-D\n", hence the
+# byte offset.
+RAW_BODY=""
+if [[ -n "$MESSAGE_ID_EXIM" && -n "$SPOOL_DIR" ]]; then
+    for candidate in "$SPOOL_DIR/input/${MESSAGE_ID_EXIM}-D" "$SPOOL_DIR/input/"*/"${MESSAGE_ID_EXIM}-D"; do
+        if [[ -r "$candidate" ]]; then
+            RAW_BODY=$(LC_ALL=C tail -c "+$(( ${#MESSAGE_ID_EXIM} + 4 ))" "$candidate" 2>/dev/null | head -c "$MAX_RAW_SIZE")
+            break
+        fi
+    done
+fi
+if [[ -z "$RAW_BODY" ]]; then
+    log "debug" "spool body unavailable for ${MESSAGE_ID_EXIM}, falling back to \$message_body"
+    RAW_BODY="$BODY_FALLBACK"
 fi
 
-# Build content for classification (subject + body)
+# --- MIME decoding ----------------------------------------------------
+#
+# The body on the spool is the wire form: base64 or quoted-printable
+# inside a multipart container for anything but the simplest message.
+# Handing that to the scanner means content_analysis, bayes and retvec
+# score encoded noise, which is where a good part of the false-positive
+# rate on Polish quoted-printable mail came from. Decode with python3's
+# email package when it is available; fall back to the wire form when it
+# is not (still better than 500 truncated bytes).
+BODY_TEXT=""
+if command -v python3 >/dev/null 2>&1; then
+    BODY_TEXT=$(printf '%s\n\n%s' "$RAW_HEADERS" "$RAW_BODY" | python3 -c '
+import sys
+try:
+    import email, email.policy
+except Exception:
+    sys.exit(1)
+raw = sys.stdin.buffer.read()
+try:
+    msg = email.message_from_bytes(raw, policy=email.policy.default)
+except Exception:
+    sys.exit(1)
+parts = []
+try:
+    body = msg.get_body(preferencelist=("plain", "html"))
+    if body is not None:
+        parts.append(body.get_content())
+except Exception:
+    pass
+if not parts:
+    try:
+        walker = msg.walk()
+    except Exception:
+        walker = []
+    for part in walker:
+        try:
+            if part.get_content_maintype() == "text":
+                parts.append(part.get_content())
+        except Exception:
+            pass
+sys.stdout.write("\n\n".join(p for p in parts if p))
+' 2>/dev/null)
+fi
+if [[ -z "$BODY_TEXT" ]]; then
+    BODY_TEXT="$RAW_BODY"
+fi
+
+# --- Full RFC 822 message for cryptographic DKIM ----------------------
+#
+# With raw_message the backend runs a real RFC 6376 verification (DNS
+# key lookup, body hash, signature); without it, it falls back to
+# "a DKIM-Signature header exists and its d= aligns with From", which a
+# sender can fake by pasting a header.
+#
+# Only sent when the reconstructed message is 7-bit clean and under the
+# size ceiling. jq substitutes U+FFFD for bytes that are not valid UTF-8,
+# which would silently break the body hash — and a raw_message that
+# fails verification is worse than none, because it suppresses the
+# header-only fallback the backend would otherwise use.
+RAW_MESSAGE=""
+if [[ -n "$RAW_HEADERS" && -n "$RAW_BODY" ]]; then
+    RAW_MESSAGE="${RAW_HEADERS}"$'\n\n'"${RAW_BODY}"
+    if printf '%s' "$RAW_MESSAGE" | LC_ALL=C grep -q '[^[:print:][:space:]]' \
+       || (( ${#RAW_MESSAGE} > MAX_RAW_SIZE )); then
+        RAW_MESSAGE=""
+        log "debug" "raw_message omitted (8-bit content or over ${MAX_RAW_SIZE} bytes)"
+    fi
+fi
+
+# Pull a single header out of the raw header block, unfolding
+# continuation lines. Returns the first occurrence, which for headers
+# stamped by the local MTA is the one Exim itself added — message-supplied
+# copies always sit further down.
+header_from_raw() {
+    printf '%s\n' "$RAW_HEADERS" | awk -v name="$1" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            if (line ~ /^[ \t]/) {
+                if (collect) { sub(/^[ \t]+/, " ", line); out = out line }
+                next
+            }
+            # awk runs END on exit, so clear the flag to avoid a
+            # second copy of the value.
+            if (collect) { print out; collect = 0; exit }
+            if (index(tolower(line), name ":") == 1) {
+                collect = 1
+                out = substr(line, length(name) + 2)
+                sub(/^[ \t]+/, "", out)
+            }
+        }
+        END { if (collect) print out }
+    ' 2>/dev/null
+}
+
+SPF_HEADER=$(header_from_raw "received-spf")
+DKIM_SIGNATURE=$(header_from_raw "dkim-signature")
+LIST_UNSUBSCRIBE=$(header_from_raw "list-unsubscribe")
+LIST_ID=$(header_from_raw "list-id")
+PRECEDENCE=$(header_from_raw "precedence")
+
+# Authentication-Results is deliberately NOT forwarded. On a directly
+# receiving MTA every copy of that header came in with the message, and
+# the backend grants a negative (ham) score for any `spf=pass` /
+# `dmarc=pass` substring it finds there — so forwarding it hands the
+# sender a switch for lowering their own score. DKIM is covered properly
+# by raw_message above.
+
+# Build content for classification (subject + decoded body)
 CONTENT="Subject: ${SUBJECT}
 
-${MESSAGE_BODY}"
+${BODY_TEXT}"
+if (( ${#CONTENT} > MAX_CONTENT_SIZE )); then
+    CONTENT="${CONTENT:0:$MAX_CONTENT_SIZE}"
+    log "debug" "Content truncated to $MAX_CONTENT_SIZE bytes"
+fi
 
-log "debug" "Checking email from=${SENDER_EMAIL} ip=${SENDER_IP} subject=\"${SUBJECT:0:50}\""
+# The API rejects an empty content with 422; nothing to classify anyway.
+if [[ -z "${CONTENT//[[:space:]]/}" ]]; then
+    log "debug" "empty content for ${MESSAGE_ID_EXIM}, skipping scan"
+    exit 2
+fi
 
-# Build JSON payload using jq for proper escaping
-PAYLOAD=$(jq -n \
-    --arg content "$CONTENT" \
-    --arg source "email" \
-    --arg ip "$SENDER_IP" \
-    --arg email "$SENDER_EMAIL" \
-    --arg from "$FROM_HEADER" \
-    --arg to "$TO_HEADER" \
-    --arg subject "$SUBJECT" \
-    --arg message_id "$MESSAGE_ID" \
-    --arg spf "$SPF_HEADER" \
-    --arg auth_results "$AUTH_RESULTS" \
-    --arg dkim "$DKIM_SIGNATURE" \
-    '{
-        content: $content,
-        source: $source,
-        ip_address: $ip,
-        email: $email,
+log "debug" "Checking email from=$(log_safe "$SENDER_EMAIL") ip=$(log_safe "$SENDER_IP") subject=\"$(log_safe "$SUBJECT")\""
+
+# Build JSON payload using jq for proper escaping.
+#
+# The values reach jq through its environment, not through --arg:
+# /proc/<pid>/cmdline is world-readable on a stock DirectAdmin box, so
+# an argv carrying the message would let any shell user on the server
+# read other customers' mail out of `ps`. /proc/<pid>/environ is 0400
+# and readable only by the process owner. `source: "email"` selects the
+# mail-tuned RETVec model on the backend.
+PAYLOAD=$(
+    ST_CONTENT="$CONTENT" \
+    ST_IP="$SENDER_IP" \
+    ST_EMAIL="$SENDER_EMAIL" \
+    ST_RAW="$RAW_MESSAGE" \
+    ST_FROM="$FROM_HEADER" \
+    ST_TO="$TO_HEADER" \
+    ST_SUBJECT="$SUBJECT" \
+    ST_MESSAGE_ID="$MESSAGE_ID" \
+    ST_SPF="$SPF_HEADER" \
+    ST_DKIM="$DKIM_SIGNATURE" \
+    ST_LIST_UNSUB="$LIST_UNSUBSCRIBE" \
+    ST_LIST_ID="$LIST_ID" \
+    ST_PRECEDENCE="$PRECEDENCE" \
+    jq -n '{
+        content: $ENV.ST_CONTENT,
+        source: "email",
+        ip_address: $ENV.ST_IP,
+        email: $ENV.ST_EMAIL,
+        raw_message: $ENV.ST_RAW,
         headers: {
-            from: $from,
-            to: $to,
-            subject: $subject,
-            message_id: $message_id,
-            "received-spf": $spf,
-            "authentication-results": $auth_results,
-            "dkim-signature": $dkim
+            from: $ENV.ST_FROM,
+            to: $ENV.ST_TO,
+            subject: $ENV.ST_SUBJECT,
+            message_id: $ENV.ST_MESSAGE_ID,
+            "received-spf": $ENV.ST_SPF,
+            "dkim-signature": $ENV.ST_DKIM,
+            "list-unsubscribe": $ENV.ST_LIST_UNSUB,
+            "list-id": $ENV.ST_LIST_ID,
+            "precedence": $ENV.ST_PRECEDENCE
         }
     }' 2>/dev/null)
 
 if [[ -z "$PAYLOAD" ]]; then
     log "error" "Failed to build JSON payload"
-    exit 0  # Fail open
+    exit 2  # Fail open
 fi
 
 # Call API — append /scan/check to the base URL.
-# -w "\n%{http_code}" appends the status code on its own line so we
-# can detect HTTP 402 (QUOTA_EXCEEDED) without parsing the body —
-# the backend may send an empty / malformed body in pathological
-# cases and we still need to fail-open cleanly.
-HTTP_RESPONSE=$(curl -s -m "$TIMEOUT" -w "\n%{http_code}" \
+#
+# The API key goes in over a curl config file on a pipe, never in argv:
+# this runs once per delivered message, and /proc/<pid>/cmdline is
+# world-readable, so an argv header would hand every shell user on a
+# shared box the server's key. The process substitution keeps the key
+# off the filesystem too; printf is a bash builtin, so it never gets an
+# argv of its own either.
+#
+# -w "\n%{http_code}" appends the status code on its own line so we can
+# detect HTTP 402 (QUOTA_EXCEEDED) without parsing the body — the
+# backend may send an empty / malformed body in pathological cases and
+# we still need to fail-open cleanly.
+HTTP_RESPONSE=$(printf '%s' "$PAYLOAD" | curl -s \
+    -K <(printf 'header = "X-API-Key: %s"\n' "$API_KEY") \
+    --proto '=https' \
+    --connect-timeout 3 \
+    -m "$TIMEOUT" \
+    -w "\n%{http_code}" \
     -H "Content-Type: application/json" \
-    -H "X-API-Key: $API_KEY" \
-    -d "$PAYLOAD" \
+    --data-binary @- \
     "${API_URL%/}/scan/check" 2>/dev/null)
 
 CURL_EXIT=$?
 if [[ $CURL_EXIT -ne 0 ]]; then
     log "error" "API call failed: curl exit=$CURL_EXIT"
-    exit 0  # Fail open
+    exit 2  # Fail open
 fi
 
 HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
@@ -200,35 +397,52 @@ RESPONSE=$(echo "$HTTP_RESPONSE" | sed '$d')
 # "X messages skipped — upgrade your plan" notice.
 if [[ "$HTTP_CODE" == "402" ]]; then
     USAGE=$(echo "$RESPONSE" | jq -c '.error.usage // {}' 2>/dev/null)
-    log "warn" "quota_exceeded from=${SENDER_EMAIL} to=\"${TO_HEADER}\" usage=${USAGE}"
+    log "warn" "quota_exceeded from=$(log_safe "$SENDER_EMAIL") to=\"$(log_safe "$TO_HEADER")\" usage=$(log_safe "$USAGE")"
     SKIP_LOG="${LOG_DIR:-/var/log/spamtroll}/quota_skipped.log"
     mkdir -p "$(dirname "$SKIP_LOG")" 2>/dev/null
-    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ${SENDER_EMAIL} ${USAGE}" >> "$SKIP_LOG" 2>/dev/null
-    exit 0  # Fail open — accept the message without scanning
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) $(log_safe "$SENDER_EMAIL") $(log_safe "$USAGE")" >> "$SKIP_LOG" 2>/dev/null
+    exit 2  # Fail open — accept the message, unscanned and unmarked
+fi
+
+# Any other non-2xx is 401 / 403 / 429 / 500, an HTML error page from a
+# proxy, or something else we did not ask for. None of them is a
+# verdict, so say so with exit 2 instead of letting the message be
+# stamped "clean" — a header that claims the scanner looked at a message
+# it never saw is worse than no header.
+if [[ ! "$HTTP_CODE" =~ ^2[0-9][0-9]$ ]]; then
+    log "error" "API returned HTTP ${HTTP_CODE}; message not scanned"
+    exit 2  # Fail open
 fi
 
 # Parse response. Backend wraps successful replies as
 #   {"success": true, "data": {"status": "...", "spam_score": N, ...}}
 # so we unwrap .data.*. Fall back to top-level keys only to stay
 # compatible with older API shapes.
-STATUS=$(echo "$RESPONSE" | jq -r '.data.status // .status // "safe"' 2>/dev/null)
+STATUS=$(echo "$RESPONSE" | jq -r '.data.status // .status // ""' 2>/dev/null)
 SCORE=$(echo "$RESPONSE" | jq -r '.data.spam_score // .spam_score // 0' 2>/dev/null)
+[[ "$SCORE" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || SCORE="0"
 
-# Handle empty/null values
-[[ -z "$STATUS" || "$STATUS" == "null" ]] && STATUS="safe"
-[[ -z "$SCORE" || "$SCORE" == "null" ]] && SCORE="0"
+# Only the three documented verdicts count. An empty body, a truncated
+# response or an unknown status string means we have no verdict.
+case "$STATUS" in
+    blocked|suspicious|safe) ;;
+    *)
+        log "error" "unrecognised verdict from API; message not scanned"
+        exit 2  # Fail open
+        ;;
+esac
 
-# Log result
-# Strip any whitespace/newlines from TO and SUBJECT headers — Exim
-# may pass multi-line or folded header values.
-TO_CLEAN=$(echo -n "$TO_HEADER" | tr -d '\n\r' | head -c 200)
-SUBJECT_CLEAN=$(echo -n "$SUBJECT" | tr -d '\n\r' | head -c 200)
+log "info" "from=$(log_safe "$SENDER_EMAIL") to=\"$(log_safe "$TO_HEADER")\" subject=\"$(log_safe "$SUBJECT")\" ip=$(log_safe "$SENDER_IP") status=${STATUS} score=${SCORE}"
 
-log "info" "from=${SENDER_EMAIL} to=\"${TO_CLEAN}\" subject=\"${SUBJECT_CLEAN}\" ip=${SENDER_IP} status=${STATUS} score=${SCORE}"
+# The score, and only the score, on stdout — the ACL reads it from
+# $value to build X-Spamtroll-Score.
+printf '%s' "$SCORE"
 
-# Return based on status
-if [[ "$STATUS" == "blocked" ]]; then
-    exit 1  # Reject email
-fi
-
-exit 0  # Accept email
+# Return based on status. `suspicious` gets its own exit code: reporting
+# it as clean tells a user filtering on X-Spamtroll-Status the opposite
+# of what the scanner concluded.
+case "$STATUS" in
+    blocked)    exit 1 ;;
+    suspicious) exit 3 ;;
+    *)          exit 0 ;;
+esac
