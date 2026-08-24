@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-24
+
 ### Added
 
 - **Continuous integration.** `.github/workflows/qa.yml` runs eleven gates on every
