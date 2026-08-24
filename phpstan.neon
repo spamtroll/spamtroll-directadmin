@@ -1,0 +1,11 @@
+# No composer.json here, so PHPStan runs from a PHAR against explicit
+# paths. fileExtensions is load-bearing: DirectAdmin requires the panel
+# entry point to be named index.html, but it is PHP.
+parameters:
+    level: 5
+    fileExtensions:
+        - php
+        - html
+    paths:
+        - lib
+        - admin
