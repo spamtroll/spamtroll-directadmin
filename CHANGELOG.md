@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-24
+
+> **Note on 1.0.0.** `plugin.conf` shipped `version=1.0.0` while this file jumped
+> straight from `[0.1.0]` to `[Unreleased]` — 1.0.0 was released without a changelog
+> entry. The gap is left visible on purpose rather than backfilled with a guess; the
+> CI gate proposed in `spamtroll/docs/plans/PLUGIN_DIRECTADMIN_CI.md` makes that
+> class of drift impossible to repeat.
+>
+> This release is what makes the fixes below **reachable by existing installations**.
+> DirectAdmin compares the installed version against `version_url`; with both at
+> 1.0.0 the corrected plugin was published but never offered as an update.
+
 ### Security
 - **API key no longer reaches `argv`** (`exim/spamtroll-check`). The key was passed to `curl` as `-H "X-API-Key: …"`, once per delivered message; `/proc/<pid>/cmdline` is world-readable on a stock DirectAdmin install, so any shell user on a shared server could read the owner's key out of `ps`. It now travels over a curl config file on a pipe (`-K <(…)`). The message payload moved out of `curl -d` and `jq --arg` into `jq`'s environment for the same reason — `/proc/<pid>/environ` is 0400.
 - **Stored XSS in the admin dashboard, triggered by a remotely sent email.** `admin/index.html` echoed `strtoupper($entry['status'])` unescaped. `status` is parsed back out of the plugin's own log line, which is built from message headers, so a `To:` header shaped like `x" status="<svg onload=alert(1)>" y="` injected a `status` field the parser preferred, executing script in the DirectAdmin admin's session. Two independent fixes: `spamtroll-check` strips quotes, backslashes, newlines and control characters from every value it logs, and the panel maps the verdict through a fixed table so only `BLOCKED`/`SUSPICIOUS`/`SAFE`/`ERROR`/`UNKNOWN` can be rendered. Remaining unescaped `<?=` sinks (message type, chart titles, config paths) were escaped as well.
