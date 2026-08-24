@@ -19,13 +19,21 @@
 #      which -bV can detect: Exim expands strings lazily.
 #
 # Needs exim4-daemon-light and root (for /usr/local/bin/spamtroll-check).
+#
+# Both config files are staged into a world-readable temp directory
+# rather than read from the checkout, and that is not tidiness. `-C`
+# with a config outside TRUSTED_CONFIG_LIST makes Exim drop root and
+# continue as the exim user, so it reads the ACL as uid 100, not as the
+# uid that invoked the gate. On a GitHub runner the checkout lives under
+# /home/runner, which is drwxr-x---, and every one of the eleven
+# assertions failed on `failed to open included configuration file`.
+# Copying sidesteps the whole question of who owns the workspace.
 
 set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACL="${1:-$REPO_DIR/exim/acl_check_message.pre.conf}"
 EXIM="$(command -v exim4 || command -v exim)"
-HARNESS=/tmp/spamtroll-acl-harness.conf
 STUB=/usr/local/bin/spamtroll-check
 rc=0
 
@@ -33,6 +41,17 @@ if [[ -z "$EXIM" ]]; then
     echo "FAIL: no exim binary on PATH"
     exit 1
 fi
+
+WORKDIR="$(mktemp -d /tmp/spamtroll-acl-gate.XXXXXX)" || exit 1
+trap 'rm -rf "$WORKDIR"' EXIT
+HARNESS="$WORKDIR/harness.conf"
+STAGED_ACL="$WORKDIR/acl_check_message.pre.conf"
+
+# 0755 on the directory, 0644 on the files: readable by the exim user
+# Exim demotes itself to, and writable by nobody else.
+chmod 755 "$WORKDIR"
+cp "$ACL" "$STAGED_ACL" || exit 1
+chmod 644 "$STAGED_ACL"
 
 # Minimal config that reproduces how DirectAdmin pulls the file in: an
 # .include inside acl_check_message. The routers/transports exist only
@@ -48,7 +67,7 @@ begin acl
 acl_check_rcpt:
   accept
 acl_check_message:
-  .include ${ACL}
+  .include ${STAGED_ACL}
   accept
 begin routers
 r_local:
@@ -60,13 +79,19 @@ t_null:
   file = /dev/null
   user = Debian-exim
 HARNESS_EOF
+chmod 644 "$HARNESS"
 
 echo "== 1. ACL syntax (exim -bV) =="
 if out=$("$EXIM" -bV -C "$HARNESS" 2>&1) && ! grep -qi 'configuration error' <<<"$out"; then
     echo "  ok  parses under $("$EXIM" -bV 2>/dev/null | head -1 | cut -d' ' -f1-3)"
 else
-    echo "  FAIL  the ACL does not parse:"
-    grep -i 'error' <<<"$out" | awk '{ print "        " $0 }'
+    # Every line, not a grep for /error/. Exim puts the reason on the
+    # line *after* the one naming the file, and that continuation line
+    # says things like "failed to open included configuration file"
+    # without ever using the word "error" — so the grep this replaces
+    # printed a bare "...harness.conf:" and nothing else.
+    echo "  FAIL  the ACL does not parse; full exim output follows:"
+    awk '{ print "        " $0 }' <<<"$out"
     rc=1
 fi
 
@@ -106,6 +131,14 @@ acl_case() {  # name, source-ip, stub exit code ('absent' = no script), stub std
         printf '  ok    %-30s accept=%-3s %s\n' "$name" "$accepted" "$got"
     else
         printf '  FAIL  %-30s accept=%-3s %s (expected %s)\n' "$name" "$accepted" "$got" "$want"
+        # A case that fails because the session never got as far as the
+        # DATA ACL looks identical to one that ran and returned the
+        # wrong verdict: both print accept=no. Show why. -A1 is not
+        # decoration: Exim names the file on one line and gives the
+        # reason on the next, so matching lines alone would reproduce
+        # the truncated "...harness.conf:" this gate used to emit.
+        grep -iE -A1 'error|failed|refused|cannot|denied|rejected|[45][0-9][0-9] ' <<<"$log" \
+            | grep -v '^--$' | head -6 | awk '{ print "          " $0 }'
         rc=1
     fi
 
