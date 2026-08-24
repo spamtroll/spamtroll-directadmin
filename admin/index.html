@@ -10,6 +10,17 @@
 // DirectAdmin plugin path
 define('PLUGIN_DIR', dirname(__DIR__));
 
+// plugin.conf is what DirectAdmin reads, so it is the only place the
+// version is written down. A second copy in this file went stale the
+// first time a release shipped, and the footer advertised the previous
+// version to every admin who opened the panel. tests/ci/version-gate.sh
+// now rejects any version literal here, which is why this comment
+// carries none either.
+$pluginVersion = 'unknown';
+if (preg_match('/^version=(.+)$/m', (string)@file_get_contents(PLUGIN_DIR . '/plugin.conf'), $m)) {
+    $pluginVersion = trim($m[1]);
+}
+
 // Include libraries
 require_once PLUGIN_DIR . '/lib/config.php';
 require_once PLUGIN_DIR . '/lib/api.php';
@@ -1146,7 +1157,7 @@ if (empty($logs)) {
         <?php endif; ?>
 
         <div style="text-align: center; margin-top: 24px; color: var(--gray-600); font-size: 12px;">
-            Spamtroll Anti-Spam v1.0.0 &middot; <a href="https://spamtroll.io" target="_blank">spamtroll.io</a>
+            Spamtroll Anti-Spam v<?= htmlspecialchars($pluginVersion) ?> &middot; <a href="https://spamtroll.io" target="_blank">spamtroll.io</a>
         </div>
     </div>
 <script>
