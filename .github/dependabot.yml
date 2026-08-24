@@ -1,0 +1,14 @@
+# The workflows pin every action to a commit SHA (see the CI plan, 3.2):
+# this repository's artefact runs as root on customer machines, and a
+# hijacked `@v4` tag would execute in the job that builds it. Pinned SHAs
+# freeze without a bump mechanism, so Dependabot is the other half of
+# that decision — it understands pinned SHAs and raises them together
+# with the trailing version comment.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(ci)

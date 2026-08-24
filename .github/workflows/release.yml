@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# DirectAdmin does not install from a GitHub Release. It fetches
+# plugin.conf's update_url / version_url, which are served by the
+# spamtroll frontend image — and that image clones this repo at
+# `PLUGIN_DA_REF`, currently the literal string `main`.
+#
+# So this workflow does not publish to customers. What it does is
+# produce the byte-for-byte artefact the delivery pipeline will produce,
+# under the exact names it will use, so that a release can be reviewed
+# and diffed against what is live before the frontend is rebuilt.
+jobs:
+  package:
+    name: Build release artefact
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # only to attach files to the release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # A tag that disagrees with plugin.conf would publish a version
+      # DirectAdmin never offers as an update.
+      - name: Version consistency
+        run: ./tests/ci/version-gate.sh
+
+      - name: Tag matches plugin.conf
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          conf_version="$(sed -n 's/^version=//p' plugin.conf | head -1)"
+          if [[ "$tag_version" != "$conf_version" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME} vs plugin.conf ${conf_version}"
+            exit 1
+          fi
+          echo "  ok  ${conf_version}"
+
+      # Reproduce exactly what web/Dockerfile.prod:73-82 does, including
+      # the rename and the plain-text .version file, so the two cannot
+      # drift apart unnoticed.
+      - name: Build and name as the delivery pipeline does
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version=//p' plugin.conf | head -1)"
+          bash build.sh > /dev/null
+          mkdir -p dist
+          mv plugin.tar.gz dist/spamtroll-directadmin.tar.gz
+          printf '%s' "$version" > dist/spamtroll-directadmin.version
+
+          # The names are not arbitrary: plugin.conf points DirectAdmin at them.
+          while read -r want; do
+            test -f "dist/${want}" || { echo "::error::missing dist/${want}"; exit 1; }
+            echo "  ok  dist/${want} (named by plugin.conf)"
+          done < <(sed -nE 's#^(update_url|version_url)=.*/##p' plugin.conf)
+
+          tar_version="$(tar -xzOf dist/spamtroll-directadmin.tar.gz spamtroll/plugin.conf | sed -n 's/^version=//p')"
+          [[ "$tar_version" == "$version" ]]
+          echo "  ok  tarball and .version both say ${version}"
+          sha256sum dist/* | tee dist/SHA256SUMS
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: spamtroll-directadmin
+          path: dist/
+
+      - name: Attach to release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: dist/*

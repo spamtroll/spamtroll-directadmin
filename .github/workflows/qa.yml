@@ -1,0 +1,272 @@
+name: QA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# The plugin installs as root and sits in Exim's DATA path. QA reads the
+# repository and writes nothing back to it, so the token gets nothing else.
+permissions:
+  contents: read
+
+# Superseded PR pushes are pointless work; a push to main is the release
+# channel (web/Dockerfile.prod clones main) and must never be cancelled.
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Pinned: a new ShellCheck release adds checks, and a linter upgrade
+  # must never be able to turn the release branch red on its own.
+  SHELLCHECK_IMAGE: koalaman/shellcheck:v0.10.0
+  PHPSTAN_VERSION: '2.2.9'
+  PHPSTAN_SHA256: 42af2954326f2f6f0c39e12eb0e1229b9e037297e2caec9a5db11d44e4f6cce1
+
+jobs:
+  shell:
+    name: Shell (bash -n + ShellCheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # Discovery by shebang, not by a hardcoded list: exim/spamtroll-check
+      # has no .sh suffix, exim/spamtroll-logrotate is not a script at all,
+      # and admin/index.html is PHP behind a #!/usr/local/bin/php line. A
+      # list would go stale the first time somebody adds a script.
+      - name: Discover shell scripts
+        id: discover
+        run: |
+          set -euo pipefail
+          {
+            echo 'files<<EOF'
+            git ls-files | while read -r f; do
+              [[ -f "$f" ]] || continue
+              [[ "$(head -c 2 "$f")" == '#!' ]] || continue
+              head -1 "$f" | grep -qE '(bash|/sh)( |$)' && printf '%s\n' "$f"
+            done
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Syntax check (bash -n)
+        run: |
+          set -uo pipefail
+          rc=0
+          while read -r f; do
+            [[ -n "$f" ]] || continue
+            if out=$(bash -n "$f" 2>&1); then
+              echo "  ok  $f"
+            else
+              echo "::error file=${f}::${out}"
+              rc=1
+            fi
+          done <<< '${{ steps.discover.outputs.files }}'
+          exit "$rc"
+
+      # -S style is ShellCheck's strictest *default* severity. The repo
+      # passes it today with zero suppressions and no .shellcheckrc, so
+      # the gate starts clean and every exception from here on is a
+      # deliberate, reviewable decision. `-o all` was measured and
+      # rejected: 352 findings, 291 of them SC2250 "prefer ${braces}".
+      - name: ShellCheck
+        run: |
+          set -uo pipefail
+          mapfile -t files <<< '${{ steps.discover.outputs.files }}'
+          printf 'checking %d scripts\n' "${#files[@]}"
+          docker run --rm -v "$PWD:/mnt:ro" -w /mnt "$SHELLCHECK_IMAGE" \
+            -S style -f gcc "${files[@]}"
+
+  tests:
+    name: Regression suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # jq, curl and python3 ship in the hosted runner image, but the
+      # suite degrades *silently* without python3 (it skips the MIME
+      # assertions and still exits 0), so this is asserted rather than
+      # assumed. Installing only what is missing keeps it a no-op today.
+      - name: Ensure suite dependencies
+        run: |
+          set -euo pipefail
+          missing=()
+          for t in jq curl python3; do
+            command -v "$t" >/dev/null || missing+=("$t")
+          done
+          if (( ${#missing[@]} )); then
+            echo "installing: ${missing[*]}"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq "${missing[@]}"
+          fi
+          bash --version | head -1
+
+      - name: run-tests.sh (bash 5.x)
+        run: ./tests/ci/assert-suite.sh
+
+      # DirectAdmin's oldest realistic host today is EL8, whose bash is
+      # 4.4. spamtroll-check uses ${var,,}, a bash 4.0 feature, so 4.4 is
+      # the floor worth pinning. Run through docker rather than a job
+      # `container:` so no JS action has to execute inside EL8's glibc.
+      - name: run-tests.sh on bash 4.4 (AlmaLinux 8)
+        run: |
+          docker run --rm -v "$PWD:/src:ro" almalinux:8 bash -c '
+            dnf install -y -q jq python3 >/dev/null
+            cp -r /src /work && cd /work
+            exec ./tests/ci/assert-suite.sh'
+
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The plugin cannot choose the interpreter: DirectAdmin's
+        # CustomBuild decides. 8.1 is the floor (catches syntax the
+        # oldest supported host cannot parse), 8.4 the ceiling.
+        php: ['8.1', '8.4']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json, mbstring
+          coverage: none
+          tools: none
+
+      # admin/index.html is PHP despite the extension — DirectAdmin
+      # requires that name for the panel entry point.
+      - name: php -l
+        run: |
+          set -uo pipefail
+          rc=0
+          for f in lib/*.php admin/index.html tests/api-error-shapes.php; do
+            if out=$(php -l "$f" 2>&1); then
+              echo "  ok  $f"
+            else
+              echo "::error file=${f}::${out}"
+              rc=1
+            fi
+          done
+          exit "$rc"
+
+      - name: Error-shape assertions
+        run: php tests/api-error-shapes.php
+
+  phpstan:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.3'
+          extensions: curl, json, mbstring
+          coverage: none
+          tools: none
+
+      # There is no composer.json here, so PHPStan arrives as a PHAR.
+      # The checksum matters more than usual: this repository's output
+      # runs as root on customer machines.
+      - name: Fetch PHPStan
+        run: |
+          set -euo pipefail
+          curl -sSLf -o /tmp/phpstan.phar \
+            "https://github.com/phpstan/phpstan/releases/download/${PHPSTAN_VERSION}/phpstan.phar"
+          echo "${PHPSTAN_SHA256}  /tmp/phpstan.phar" | sha256sum -c -
+          php /tmp/phpstan.phar --version
+
+      # --memory-limit=1G is headroom, not a cure: PHPStan's default is
+      # 128 MB and the analysis has been observed to exhaust it. It fits
+      # today, so the flag costs nothing and removes a failure mode that
+      # only ever shows up as an OOM in the middle of a run.
+      - name: Analyse
+        run: php /tmp/phpstan.phar analyse --memory-limit=1G --no-progress
+
+  exim:
+    name: Exim ACL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install Exim
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq exim4-daemon-light
+          exim4 -bV | head -1
+
+      # Needs root: the gate drops a stub at /usr/local/bin/spamtroll-check,
+      # which is the path the ACL hardcodes.
+      - name: ACL syntax, fail-open policy and execution
+        run: sudo -E ./tests/ci/acl-gate.sh
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Version consistency
+        run: ./tests/ci/version-gate.sh
+
+      - name: build.sh
+        run: bash build.sh
+
+      # build.sh is the only thing standing between a merge and a
+      # customer's Plugin Manager, and nothing else tests it. Assert the
+      # tarball's shape rather than just its exit code: a missing +x on
+      # spamtroll-check produces a plugin that installs and never runs.
+      - name: Assert artefact shape
+        run: |
+          set -euo pipefail
+          test -f plugin.tar.gz
+          for entry in \
+            spamtroll/plugin.conf \
+            spamtroll/exim/spamtroll-check \
+            spamtroll/exim/acl_check_message.pre.conf \
+            spamtroll/exim/spamtroll-logrotate \
+            spamtroll/scripts/install.sh \
+            spamtroll/scripts/uninstall.sh \
+            spamtroll/scripts/update.sh \
+            spamtroll/lib/api.php \
+            spamtroll/lib/config.php \
+            spamtroll/lib/stats.php \
+            spamtroll/admin/index.html \
+            spamtroll/hooks/admin_txt.html \
+            spamtroll/images/menu.json
+          do
+            tar -tzf plugin.tar.gz "$entry" > /dev/null
+            echo "  ok  ${entry}"
+          done
+          for entry in \
+            spamtroll/exim/spamtroll-check \
+            spamtroll/scripts/install.sh \
+            spamtroll/scripts/uninstall.sh \
+            spamtroll/scripts/update.sh \
+            spamtroll/admin/index.html
+          do
+            tar -tvzf plugin.tar.gz "$entry" | grep -q '^-rwx' \
+              || { echo "::error::${entry} lost its executable bit"; exit 1; }
+            echo "  ok  +x ${entry}"
+          done
+          # The dev-only files must not reach a customer's server.
+          ! tar -tzf plugin.tar.gz | grep -qE '(^|/)(tests|\.github|CLAUDE\.md)(/|$)'
+          echo "  ok  no dev files in the tarball"
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: plugin-tarball
+          path: plugin.tar.gz
+          retention-days: 14
