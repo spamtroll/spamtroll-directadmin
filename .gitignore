@@ -13,3 +13,4 @@ Thumbs.db
 # Build
 /build/
 plugin.tar.gz
+/dist/

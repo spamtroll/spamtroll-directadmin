@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-24
+
+### Added
+
+- **Continuous integration.** `.github/workflows/qa.yml` runs eleven gates on every
+  push and pull request to `main`: `bash -n` and ShellCheck (`-S style`, no
+  suppressions, no `.shellcheckrc`) over every script discovered by shebang; the
+  regression suite on both bash 5.2 and bash 4.4 (AlmaLinux 8, the oldest bash
+  DirectAdmin realistically runs); `php -l` and the API error-shape assertions on
+  PHP 8.1 and 8.4; PHPStan level 5 with no baseline; three-part validation of the
+  Exim ACL; and a build of `plugin.tar.gz` with assertions on its contents,
+  permission bits and absence of dev files. `main` is the release channel — the
+  frontend image clones it at build time — so until now nothing stood between a
+  merge and a customer's Plugin Manager.
+- **`.github/workflows/release.yml`** builds the artefact under the names
+  `plugin.conf` promises (`spamtroll-directadmin.tar.gz` plus a plain-text
+  `spamtroll-directadmin.version`), checks the tag against `plugin.conf`, publishes
+  SHA256SUMS and attaches everything to the GitHub release. It is a review and
+  audit point, not a delivery mechanism: DirectAdmin still fetches from
+  `update_url`, which the frontend image serves.
+- **`tests/ci/acl-gate.sh`** validates `exim/acl_check_message.pre.conf` three ways —
+  `exim -bV -C` parses it inside a scaffold config, a grep over the
+  comment-stripped file rejects every verb that can stop a message
+  (`deny`/`defer`/`drop`/`discard`/`require`), and `exim -bh` replays eight real
+  SMTP sessions against a stub check script, one per exit code plus both loopback
+  addresses. The fail-open contract is now measured on a real MTA rather than
+  asserted by reading the file.
+- **`tests/ci/assert-suite.sh`** wraps `tests/run-tests.sh` and fails on a skipped
+  test. The suite exits 0 when it skips the MIME assertions for a missing `python3`,
+  so a runner image change could have deleted that coverage in silence.
+- **`tests/ci/version-gate.sh`** requires `plugin.conf`, the newest `CHANGELOG.md`
+  release and the admin panel to name the same version.
+- **`phpstan.neon`** with `fileExtensions: [php, html]`, so `admin/index.html` — 1200
+  lines of forms and output escaping that PHPStan would otherwise skip over its
+  extension — is analysed.
+- **`.github/dependabot.yml`** for the `github-actions` ecosystem. The workflows pin
+  every action to a commit SHA because this repository's artefact runs as root on
+  customer machines; without Dependabot those pins would simply freeze.
+
+### Fixed
+
+- **Mail injected over IPv6 loopback was scanned instead of skipped.** The ACL's
+  exclusion read `!hosts = 127.0.0.1 : ::1`, but Exim splits host lists on colons
+  and treats `::` as the escape for a literal colon, so `::1` parsed as the element
+  `:1` — "malformed IPv6 address or address mask" — and matched nothing. Roundcube,
+  `sendmail` and cron submissions over IPv6 therefore got `X-Spamtroll-Status`
+  headers on the customer's own outbound mail, consumed scan quota, and could be
+  marked spam in the sender's own mailbox. The list separator is now set explicitly
+  (`<; 127.0.0.1 ; ::1`). Found by `tests/ci/acl-gate.sh`, which reproduces it as a
+  failing case; the IPv4 half of the exclusion always worked.
+- **The admin panel advertised the wrong version.** `admin/index.html` hardcoded
+  `v1.0.0` in its footer, so the whole of the 1.1.0 release showed the previous
+  version to every admin who opened the panel. The footer now reads `version=` out of
+  `plugin.conf`, and `tests/ci/version-gate.sh` rejects any version literal in the
+  file.
+
 ## [1.1.0] - 2026-08-24
 
 > **Note on 1.0.0.** `plugin.conf` shipped `version=1.0.0` while this file jumped

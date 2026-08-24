@@ -119,6 +119,36 @@ php tests/api-error-shapes.php  # the four API error-body shapes
 never touches an installed plugin. It needs bash 4+; on macOS run it
 under a container.
 
+### CI gates
+
+Every push and pull request to `main` runs `.github/workflows/qa.yml`. That
+matters more here than in most repositories: the frontend image clones this
+branch at build time, so `main` *is* the release channel, and the plugin
+installs as root and sits in Exim's DATA path.
+
+The gates live in `tests/ci/` rather than in `run:` blocks, so each one can be
+reproduced locally with a single command:
+
+```bash
+./tests/ci/assert-suite.sh    # run-tests.sh, but a skipped test is a failure
+./tests/ci/version-gate.sh    # plugin.conf == CHANGELOG == admin panel
+sudo ./tests/ci/acl-gate.sh   # exim -bV, fail-open grep, 8 x exim -bh
+```
+
+`acl-gate.sh` needs `exim4-daemon-light` and root — it drops a stub at
+`/usr/local/bin/spamtroll-check`, the path the ACL hardcodes. On a machine you
+would rather not install Exim on:
+
+```bash
+docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 bash -c '
+  apt-get update -qq && apt-get install -y -qq exim4-daemon-light
+  cp -r /src /work && cd /work && ./tests/ci/acl-gate.sh'
+```
+
+The remaining gates — ShellCheck `-S style`, `php -l` on 8.1 and 8.4, PHPStan
+level 5 (`phpstan.neon`), the AlmaLinux 8 run of the suite, and the tarball
+shape assertions — are defined inline in the workflow.
+
 ## Updating
 
 ### Automatic
@@ -218,6 +248,9 @@ Log rotation is handled by `/etc/logrotate.d/spamtroll` (daily, 30 days retentio
     |-- uninstall.sh         # Uninstallation script
     `-- update.sh            # Update script
 ```
+
+Development-only files — `tests/`, `.github/`, `phpstan.neon` — are not copied
+into the tarball, and the Package gate asserts that they never appear in it.
 
 ## Support
 
