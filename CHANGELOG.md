@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-04
+
 ### Fixed
 
+- Exclude macOS resource metadata when building the archive locally.
 - Include the MIT license, installation guide and changelog in the distribution archive; the package CI gate requires all three files.
 - Point installation instructions at the existing download endpoint and describe the Exim integration accurately: it adds verdict headers and never rejects or defers messages.
 

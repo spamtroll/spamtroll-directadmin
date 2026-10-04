@@ -40,7 +40,7 @@ chmod 755 "$BUILD_DIR/$PLUGIN_NAME/admin/index.html"
 
 # Create tarball
 cd "$BUILD_DIR"
-tar -czvf plugin.tar.gz "$PLUGIN_NAME"
+COPYFILE_DISABLE=1 tar -czvf plugin.tar.gz "$PLUGIN_NAME"
 
 # Move to parent directory
 mv plugin.tar.gz "$SCRIPT_DIR/"
