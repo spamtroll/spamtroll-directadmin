@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Publish checksums with portable filenames so downloaded assets verify in their own directory.
 - Exclude macOS resource metadata when building the archive locally.
 - Include the MIT license, installation guide and changelog in the distribution archive; the package CI gate requires all three files.
 - Point installation instructions at the existing download endpoint and describe the Exim integration accurately: it adds verdict headers and never rejects or defers messages.

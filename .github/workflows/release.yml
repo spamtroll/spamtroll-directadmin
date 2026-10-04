@@ -65,7 +65,7 @@ jobs:
           tar_version="$(tar -xzOf dist/spamtroll-directadmin.tar.gz spamtroll/plugin.conf | sed -n 's/^version=//p')"
           [[ "$tar_version" == "$version" ]]
           echo "  ok  tarball and .version both say ${version}"
-          sha256sum dist/* | tee dist/SHA256SUMS
+          (cd dist && sha256sum spamtroll-directadmin.tar.gz spamtroll-directadmin.version) | tee dist/SHA256SUMS
 
       - name: Upload artefact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
