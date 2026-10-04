@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Include the MIT license, installation guide and changelog in the distribution archive; the package CI gate requires all three files.
+- Point installation instructions at the existing download endpoint and describe the Exim integration accurately: it adds verdict headers and never rejects or defers messages.
+
+### Added
+
+- Marketplace submission draft with supported features, installation requirements, verified delivery URLs and outstanding catalogue-access requirements.
+
 ## [1.1.1] - 2026-08-24
 
 ### Added

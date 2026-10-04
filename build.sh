@@ -25,6 +25,7 @@ cp -r "$SCRIPT_DIR/exim" "$BUILD_DIR/$PLUGIN_NAME/"
 cp -r "$SCRIPT_DIR/lib" "$BUILD_DIR/$PLUGIN_NAME/"
 cp -r "$SCRIPT_DIR/images" "$BUILD_DIR/$PLUGIN_NAME/"
 cp "$SCRIPT_DIR/plugin.conf" "$BUILD_DIR/$PLUGIN_NAME/"
+cp "$SCRIPT_DIR/LICENSE" "$SCRIPT_DIR/README.md" "$SCRIPT_DIR/CHANGELOG.md" "$BUILD_DIR/$PLUGIN_NAME/"
 
 # Create data directory structure
 mkdir -p "$BUILD_DIR/$PLUGIN_NAME/data/cache"

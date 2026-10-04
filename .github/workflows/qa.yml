@@ -233,6 +233,9 @@ jobs:
           test -f plugin.tar.gz
           for entry in \
             spamtroll/plugin.conf \
+            spamtroll/LICENSE \
+            spamtroll/README.md \
+            spamtroll/CHANGELOG.md \
             spamtroll/exim/spamtroll-check \
             spamtroll/exim/acl_check_message.pre.conf \
             spamtroll/exim/spamtroll-logrotate \

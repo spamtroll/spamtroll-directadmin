@@ -24,7 +24,7 @@ AI-powered spam detection plugin for [DirectAdmin](https://www.directadmin.com/)
 
 ### DirectAdmin Plugin Manager (Recommended)
 
-1. Download the latest `plugin.tar.gz` from [spamtroll.io/directadmin/plugin.tar.gz](https://spamtroll.io/directadmin/plugin.tar.gz)
+1. Download the latest [DirectAdmin plugin archive](https://spamtroll.io/download/spamtroll-directadmin.tar.gz)
 2. Go to **DirectAdmin > Plugin Manager**
 3. Click **Upload Plugin** and select the file
 4. The installer will set up all components automatically
@@ -33,8 +33,8 @@ AI-powered spam detection plugin for [DirectAdmin](https://www.directadmin.com/)
 
 ```bash
 cd /usr/local/directadmin/plugins
-wget https://spamtroll.io/directadmin/plugin.tar.gz
-tar -xzf plugin.tar.gz
+wget https://spamtroll.io/download/spamtroll-directadmin.tar.gz
+tar -xzf spamtroll-directadmin.tar.gz
 cd spamtroll
 ./scripts/install.sh
 ```
