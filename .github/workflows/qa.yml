@@ -238,37 +238,38 @@ jobs:
           set -euo pipefail
           test -f plugin.tar.gz
           for entry in \
-            spamtroll/plugin.conf \
-            spamtroll/LICENSE \
-            spamtroll/README.md \
-            spamtroll/CHANGELOG.md \
-            spamtroll/exim/spamtroll-check \
-            spamtroll/exim/acl_check_message.pre.conf \
-            spamtroll/exim/spamtroll-logrotate \
-            spamtroll/scripts/install.sh \
-            spamtroll/scripts/uninstall.sh \
-            spamtroll/scripts/update.sh \
-            spamtroll/lib/api.php \
-            spamtroll/lib/config.php \
-            spamtroll/lib/stats.php \
-            spamtroll/admin/index.html \
-            spamtroll/hooks/admin_txt.html \
-            spamtroll/images/menu.json
+            plugin.conf \
+            LICENSE \
+            README.md \
+            CHANGELOG.md \
+            exim/spamtroll-check \
+            exim/acl_check_message.pre.conf \
+            exim/spamtroll-logrotate \
+            scripts/install.sh \
+            scripts/uninstall.sh \
+            scripts/update.sh \
+            lib/api.php \
+            lib/config.php \
+            lib/stats.php \
+            admin/index.html \
+            hooks/admin_txt.html \
+            images/menu.json
           do
             tar -tzf plugin.tar.gz "$entry" > /dev/null
             echo "  ok  ${entry}"
           done
           for entry in \
-            spamtroll/exim/spamtroll-check \
-            spamtroll/scripts/install.sh \
-            spamtroll/scripts/uninstall.sh \
-            spamtroll/scripts/update.sh \
-            spamtroll/admin/index.html
+            exim/spamtroll-check \
+            scripts/install.sh \
+            scripts/uninstall.sh \
+            scripts/update.sh \
+            admin/index.html
           do
             tar -tvzf plugin.tar.gz "$entry" | grep -q '^-rwx' \
               || { echo "::error::${entry} lost its executable bit"; exit 1; }
             echo "  ok  +x ${entry}"
           done
+          bash tests/package-layout.sh
           # The dev-only files must not reach a customer's server.
           ! tar -tzf plugin.tar.gz | grep -qE '(^|/)(tests|\.github|CLAUDE\.md)(/|$)'
           echo "  ok  no dev files in the tarball"

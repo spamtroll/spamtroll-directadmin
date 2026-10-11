@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.3] - 2026-10-11
 
 ### Fixed
+- Package `plugin.conf` and lifecycle scripts at archive root. Native DirectAdmin updates previously reported success while extracting a nested `spamtroll/` copy and leaving the active version unchanged. Exclude `data/` and normalize archive ownership to root to preserve existing settings and permissions.
 - Keep scanner and dashboard logs writable after rotation (`admin:mail`, mode `0660`). Updates repair the permissions left by older versions while preserving existing logs and configuration.
 - Provision and rotate the quota-skipped log so Exim can record HTTP 402 responses without write access to `/var/log`.
 

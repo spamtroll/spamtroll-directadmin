@@ -32,7 +32,7 @@ The plugin software uses the MIT license. The hosted scanning service requires a
 
 DirectAdmin documents the plugin directory, `plugin.conf` metadata, administrator entry point, lifecycle scripts and executable permissions in its [plugin structure specification](https://docs.directadmin.com/developer/plugins/structure.html). These are technical installation requirements, not confirmed catalogue acceptance rules.
 
-The distribution is built with `bash build.sh`, producing `plugin.tar.gz` with the `spamtroll/` top-level directory. The release workflow renames this archive to the filename declared by `update_url`, produces the plain-text version file and publishes checksums. The frontend delivery build serves these files; a local build or GitHub artifact does not update the public download automatically.
+The distribution is built with `bash build.sh`, producing `plugin.tar.gz` with `plugin.conf` and `scripts/` at archive root, as required by native DirectAdmin extraction. It excludes `data/` to preserve settings and directory permissions. The release workflow renames this archive to the filename declared by `update_url`, produces the plain-text version file and publishes checksums. The frontend delivery build serves these files; a local build or GitHub artifact does not update the public download automatically.
 
 The packaging changes under Unreleased include LICENSE, README.md and CHANGELOG.md. The existing CI package gate checks those files along with runtime entry points and executable bits. Local artifacts containing these changes must not be described as byte-identical to the currently served public 1.1.1 package. Establish the release version and publish through the existing delivery process before submitting a final archive URL.
 

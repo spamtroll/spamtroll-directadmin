@@ -32,10 +32,10 @@ AI-powered spam detection plugin for [DirectAdmin](https://www.directadmin.com/)
 ### SSH / Command Line
 
 ```bash
-cd /usr/local/directadmin/plugins
-wget https://spamtroll.io/download/spamtroll-directadmin.tar.gz
-tar -xzf spamtroll-directadmin.tar.gz
-cd spamtroll
+mkdir -p /usr/local/directadmin/plugins/spamtroll
+cd /usr/local/directadmin/plugins/spamtroll
+curl -fL https://spamtroll.io/download/spamtroll-directadmin.tar.gz -o /tmp/spamtroll-directadmin.tar.gz
+tar -xzf /tmp/spamtroll-directadmin.tar.gz
 ./scripts/install.sh
 ```
 
@@ -166,14 +166,16 @@ If `version_url` is configured in `plugin.conf`, DirectAdmin will check for upda
 ### Manual
 
 ```bash
-cd /usr/local/directadmin/plugins
-wget -O plugin.tar.gz https://spamtroll.io/directadmin/plugin.tar.gz
-tar -xzf plugin.tar.gz
-cd spamtroll
+cd /usr/local/directadmin/plugins/spamtroll
+curl -fL https://spamtroll.io/download/spamtroll-directadmin.tar.gz -o /tmp/spamtroll-directadmin.tar.gz
+tar -xzf /tmp/spamtroll-directadmin.tar.gz
 ./scripts/update.sh
 ```
 
 The update script preserves your configuration and creates a backup of the Exim ACL before overwriting.
+Back up the complete plugin and integration before updating. The archive has
+`plugin.conf` at its root and excludes `data/`, preserving configuration and
+directory permissions during native DirectAdmin extraction.
 
 ## Uninstallation
 
