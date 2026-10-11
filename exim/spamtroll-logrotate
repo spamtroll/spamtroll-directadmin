@@ -5,5 +5,15 @@
     delaycompress
     missingok
     notifempty
-    create 640 root diradmin
+    create 660 admin mail
+}
+
+/var/log/spamtroll/quota_skipped.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 660 admin mail
 }

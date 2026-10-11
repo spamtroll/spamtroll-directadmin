@@ -18,6 +18,8 @@ trap 'echo "Spamtroll update FAILED at line $LINENO (exit $?). The plugin on dis
 PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
+LOG_FILE="/var/log/spamtroll.log"
+QUOTA_LOG_DIR="/var/log/spamtroll"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -70,6 +72,20 @@ if [[ -f "$PLUGIN_DIR/exim/acl_check_message.pre.conf" ]]; then
 else
     echo -e "${YELLOW}Warning: Source file not found, skipping${NC}"
 fi
+
+# Repair logs left unwritable by older logrotate configurations. Exim
+# runs as mail and the panel as admin; preserve all existing contents.
+echo ""
+echo "Repairing Spamtroll log permissions..."
+touch "$LOG_FILE"
+chown admin:mail "$LOG_FILE"
+chmod 660 "$LOG_FILE"
+mkdir -p "$QUOTA_LOG_DIR"
+chown admin:mail "$QUOTA_LOG_DIR"
+chmod 750 "$QUOTA_LOG_DIR"
+touch "$QUOTA_LOG_DIR/quota_skipped.log"
+chown admin:mail "$QUOTA_LOG_DIR/quota_skipped.log"
+chmod 660 "$QUOTA_LOG_DIR/quota_skipped.log"
 
 # Update logrotate config
 echo ""

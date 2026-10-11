@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-10-11
+
+### Fixed
+- Keep scanner and dashboard logs writable after rotation (`admin:mail`, mode `0660`). Updates repair the permissions left by older versions while preserving existing logs and configuration.
+- Provision and rotate the quota-skipped log so Exim can record HTTP 402 responses without write access to `/var/log`.
+
+### Added
+- Lifecycle regression covering upgrade permission repair, repeated updates, fresh installation and real log rotation.
+- Run the Exim ACL gate with a temporary scanner stub and verify that subsequent DATA ACL rules still execute, including loopback submissions.
+
 ## [1.1.2] - 2026-10-04
 
 ### Fixed

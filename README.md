@@ -135,9 +135,10 @@ reproduced locally with a single command:
 sudo ./tests/ci/acl-gate.sh   # exim -bV, fail-open grep, 8 x exim -bh
 ```
 
-`acl-gate.sh` needs `exim4-daemon-light` and root — it drops a stub at
-`/usr/local/bin/spamtroll-check`, the path the ACL hardcodes. On a machine you
-would rather not install Exim on:
+`acl-gate.sh` needs Exim and uses a temporary scanner stub, configuration and
+spool path. It never overwrites the installed scanner. Some DirectAdmin Exim
+builds restrict alternative configuration paths; use a disposable container
+for this gate rather than changing production Exim security settings:
 
 ```bash
 docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 bash -c '
@@ -148,6 +149,13 @@ docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 bash -c '
 The remaining gates — ShellCheck `-S style`, `php -l` on 8.1 and 8.4, PHPStan
 level 5 (`phpstan.neon`), the AlmaLinux 8 run of the suite, and the tarball
 shape assertions — are defined inline in the workflow.
+
+`sudo bash tests/log-permissions.sh` tests the installer, updater and real
+logrotate against a temporary filesystem fixture. It requires Linux,
+`python3`, `logrotate`, and the `admin` user and `mail` group. DirectAdmin's
+rebuild command is stubbed; no mail service is restarted by the fixture.
+
+Production audit and update recommendation: [nawia, 2026-10-11](PRODUCTION-AUDIT-2026-10-11.md).
 
 ## Updating
 
@@ -189,13 +197,17 @@ cd /usr/local/directadmin/plugins/spamtroll
 | File | Description |
 |------|-------------|
 | `/var/log/spamtroll.log` | Main log -- scan results, errors |
+| `/var/log/spamtroll/quota_skipped.log` | Messages left unscanned after HTTP 402 |
 
 Log format:
 ```
 2026-02-04 12:34:56 [info] from=sender@example.com ip=1.2.3.4 status=blocked score=0.95
 ```
 
-Log rotation is handled by `/etc/logrotate.d/spamtroll` (daily, 30 days retention, compress).
+Both logs rotate weekly, keeping 12 rotations, with delayed compression.
+New files are owned by `admin:mail` with mode `0660`, allowing the panel and
+Exim to append after rotation. Version 1.1.3 repairs older log permissions
+during installation or update without removing existing entries.
 
 ## Troubleshooting
 
@@ -210,13 +222,13 @@ Log rotation is handled by `/etc/logrotate.d/spamtroll` (daily, 30 days retentio
 - Rebuild Exim config: `cd /usr/local/directadmin && ./directadmin build exim_conf`
 
 **API connection fails**
-- Test connectivity: `curl -s https://api.spamtroll.io/api/v1/scan/check`
+- Use the panel's connection test, which calls the authenticated `/scan/status` endpoint
 - Verify your API key at [spamtroll.io/dashboard](https://spamtroll.io/dashboard)
 - Check timeout setting (increase if network is slow)
 
 **Permission errors in admin panel**
-- Config file should be owned by `diradmin:diradmin` with mode `660`
-- Log file should be owned by `root:diradmin` with mode `640`
+- Configuration directory should be owned by `admin:mail` with mode `750`; the configuration file must be readable by `mail` and writable by `admin` (`640`, or `660` after a panel save)
+- Main and quota-skipped logs should be owned by `admin:mail` with mode `660`
 
 ## File Structure
 

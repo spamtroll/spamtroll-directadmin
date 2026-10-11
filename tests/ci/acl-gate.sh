@@ -18,7 +18,8 @@
 #      runtime expansion failures and host-list mistakes, neither of
 #      which -bV can detect: Exim expands strings lazily.
 #
-# Needs exim4-daemon-light and root (for /usr/local/bin/spamtroll-check).
+# Needs Exim. All fixtures, including the scanner stub, live in a
+# temporary directory; the installed scanner is never overwritten.
 #
 # Both config files are staged into a world-readable temp directory
 # rather than read from the checkout, and that is not tidiness. `-C`
@@ -34,7 +35,6 @@ set -uo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ACL="${1:-$REPO_DIR/exim/acl_check_message.pre.conf}"
 EXIM="$(command -v exim4 || command -v exim)"
-STUB=/usr/local/bin/spamtroll-check
 rc=0
 
 if [[ -z "$EXIM" ]]; then
@@ -43,6 +43,7 @@ if [[ -z "$EXIM" ]]; then
 fi
 
 WORKDIR="$(mktemp -d /tmp/spamtroll-acl-gate.XXXXXX)" || exit 1
+STUB="$WORKDIR/spamtroll-check"
 trap 'rm -rf "$WORKDIR"' EXIT
 HARNESS="$WORKDIR/harness.conf"
 STAGED_ACL="$WORKDIR/acl_check_message.pre.conf"
@@ -50,7 +51,7 @@ STAGED_ACL="$WORKDIR/acl_check_message.pre.conf"
 # 0755 on the directory, 0644 on the files: readable by the exim user
 # Exim demotes itself to, and writable by nobody else.
 chmod 755 "$WORKDIR"
-cp "$ACL" "$STAGED_ACL" || exit 1
+sed "s|/usr/local/bin/spamtroll-check|$STUB|g" "$ACL" > "$STAGED_ACL" || exit 1
 chmod 644 "$STAGED_ACL"
 
 # Minimal config that reproduces how DirectAdmin pulls the file in: an
@@ -58,7 +59,7 @@ chmod 644 "$STAGED_ACL"
 # so that -bh gets far enough to run the DATA ACL.
 cat > "$HARNESS" <<HARNESS_EOF
 exim_path = ${EXIM}
-spool_directory = /var/spool/exim4
+spool_directory = ${WORKDIR}/spool
 keep_environment = ^PATH\$
 acl_smtp_rcpt = acl_check_rcpt
 acl_smtp_data = acl_check_message
@@ -68,6 +69,8 @@ acl_check_rcpt:
   accept
 acl_check_message:
   .include ${STAGED_ACL}
+  warn
+    add_header = X-Spamtroll-Test-After: reached
   accept
 begin routers
 r_local:
@@ -77,12 +80,12 @@ begin transports
 t_null:
   driver = appendfile
   file = /dev/null
-  user = Debian-exim
+  user = ${USER:-root}
 HARNESS_EOF
 chmod 644 "$HARNESS"
 
 echo "== 1. ACL syntax (exim -bV) =="
-if out=$("$EXIM" -bV -C "$HARNESS" 2>&1) && ! grep -qi 'configuration error' <<<"$out"; then
+if out=$("$EXIM" -C "$HARNESS" -bV 2>&1) && ! grep -qi 'configuration error' <<<"$out"; then
     echo "  ok  parses under $("$EXIM" -bV 2>/dev/null | head -1 | cut -d' ' -f1-3)"
 else
     # Every line, not a grep for /error/. Exim puts the reason on the
@@ -123,11 +126,11 @@ acl_case() {  # name, source-ip, stub exit code ('absent' = no script), stub std
         | "$EXIM" -bh "$ip" -C "$HARNESS" 2>&1)
 
     local accepted=no got
-    grep -q 'end of ACL "acl_check_message": ACCEPT' <<<"$log" && accepted=yes
+    grep -qE 'end of ACL "?acl_check_message"?: ACCEPT' <<<"$log" && accepted=yes
     got=$(grep -o 'X-Spamtroll-Status: [a-z]*' <<<"$log" | tail -1)
     got="${got:-none}"
 
-    if [[ "$accepted" == yes && "$got" == "$want" ]]; then
+    if [[ "$accepted" == yes && "$got" == "$want" ]] && grep -q 'X-Spamtroll-Test-After: reached' <<<"$log"; then
         printf '  ok    %-30s accept=%-3s %s\n' "$name" "$accepted" "$got"
     else
         printf '  FAIL  %-30s accept=%-3s %s (expected %s)\n' "$name" "$accepted" "$got" "$want"

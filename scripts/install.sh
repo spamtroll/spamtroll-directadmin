@@ -26,6 +26,7 @@ SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 DATA_DIR="$PLUGIN_DIR/data"
 CONFIG_FILE="$DATA_DIR/spamtroll.conf"
 LOG_FILE="/var/log/spamtroll.log"
+QUOTA_LOG_DIR="/var/log/spamtroll"
 
 # Colors for output
 RED='\033[0;31m'
@@ -155,6 +156,12 @@ echo "Setting up log file..."
 touch "$LOG_FILE"
 chmod 660 "$LOG_FILE"
 chown admin:mail "$LOG_FILE"
+mkdir -p "$QUOTA_LOG_DIR"
+chown admin:mail "$QUOTA_LOG_DIR"
+chmod 750 "$QUOTA_LOG_DIR"
+touch "$QUOTA_LOG_DIR/quota_skipped.log"
+chown admin:mail "$QUOTA_LOG_DIR/quota_skipped.log"
+chmod 660 "$QUOTA_LOG_DIR/quota_skipped.log"
 echo -e "${GREEN}Created: $LOG_FILE${NC}"
 
 # Install logrotate config

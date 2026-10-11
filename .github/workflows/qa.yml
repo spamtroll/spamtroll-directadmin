@@ -106,6 +106,12 @@ jobs:
       - name: run-tests.sh (bash 5.x)
         run: ./tests/ci/assert-suite.sh
 
+      - name: Lifecycle and log rotation regression
+        run: |
+          command -v logrotate >/dev/null || { sudo apt-get update -qq; sudo apt-get install -y -qq logrotate; }
+          id admin >/dev/null 2>&1 || sudo useradd --system admin
+          sudo bash tests/log-permissions.sh
+
       # DirectAdmin's oldest realistic host today is EL8, whose bash is
       # 4.4. spamtroll-check uses ${var,,}, a bash 4.0 feature, so 4.4 is
       # the floor worth pinning. Run through docker rather than a job
