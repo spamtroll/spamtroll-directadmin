@@ -109,7 +109,8 @@ jobs:
       - name: Lifecycle and log rotation regression
         run: |
           command -v logrotate >/dev/null || { sudo apt-get update -qq; sudo apt-get install -y -qq logrotate; }
-          id admin >/dev/null 2>&1 || sudo useradd --system admin
+          getent group admin >/dev/null || sudo groupadd --system admin
+          id admin >/dev/null 2>&1 || sudo useradd --system --gid admin admin
           sudo bash tests/log-permissions.sh
 
       # DirectAdmin's oldest realistic host today is EL8, whose bash is
