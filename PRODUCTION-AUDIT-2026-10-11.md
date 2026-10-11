@@ -73,3 +73,41 @@ If verification fails, restore the backed-up plugin code, ACL, scanner link
 and logrotate file, preserving configuration and any newly written logs;
 validate Exim configuration before reloading the service. No rollback was
 needed or performed during this read-only production audit.
+
+## Deployment addendum — 2026-10-11 (T-071)
+
+The historical audit above records the preparation phase of T-070. T-071
+subsequently published and deployed **1.1.3** on `nawia`; its recommendation
+to update from 1.0.0 is now fulfilled.
+
+- [Release v1.1.3](https://github.com/spamtroll/spamtroll-directadmin/releases/tag/v1.1.3)
+  targets runtime commit `3c5752b`. All seven QA jobs passed (run
+  `38167142924`), as did release publication (`38167234994`) and the frontend
+  build/deployment checks (`38167319055`). The public archive SHA-256 is
+  `787004a178feae3a55f689ab3b27927549e2e0bd2ecf08d9f733c4b8e1d1d685`.
+- The archive has `plugin.conf` at its root and excludes `data/`. The old
+  enclosing directory caused native extraction to leave active code unchanged;
+  the corrected flat package was tested before deployment. The frontend now
+  serves explicitly pinned, checksum-verified release assets.
+- The actual DirectAdmin Plugin Manager update API returned HTTP 204 and ran
+  the new `scripts/update.sh`. All 17 runtime files matched the release;
+  DirectAdmin's metadata normalization of `plugin.conf` was expected. Installed
+  and available versions both reported 1.1.3 after a controlled panel restart
+  cleared its stale version cache. No unattended update schedule was added.
+- Configuration bytes and the active flag were preserved. Settings stayed
+  `0640 admin:mail`, the data directory `0750 admin:mail`, and both logs
+  `0660 admin:mail`. The live panel and API connection test returned HTTP 200.
+  The scanner as `mail` returned safe/score 1 before and after real plugin-only
+  log rotation; both `mail` and `admin` retained log write access.
+- A synthetic SMTP check through the installed ACL/scanner and real API reached
+  the following ACL rule and accepted the message without queueing or delivery.
+  Exim configuration validation passed, DirectAdmin and Exim remained healthy,
+  and the queue was empty. The temporary test credential was revoked and its
+  subsequent request returned HTTP 401.
+
+Root-only backups and their verified checksum manifest remain under
+`/var/backups/spamtroll/T-071-codex-7251/`, including `ROLLBACK.md`.
+Rollback restores prior code/integration while retaining current settings and
+new log entries, validates Exim configuration, then reloads and checks health.
+No rollback was needed. This addendum reports T-071's verified deployment;
+editing these documents does not redeploy or modify the server.

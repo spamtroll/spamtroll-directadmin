@@ -32,11 +32,16 @@ AI-powered spam detection plugin for [DirectAdmin](https://www.directadmin.com/)
 ### SSH / Command Line
 
 ```bash
+(
+set -eu
+archive=$(mktemp /tmp/spamtroll-directadmin.XXXXXX)
+trap 'rm -f "$archive"' EXIT
 mkdir -p /usr/local/directadmin/plugins/spamtroll
 cd /usr/local/directadmin/plugins/spamtroll
-curl -fL https://spamtroll.io/download/spamtroll-directadmin.tar.gz -o /tmp/spamtroll-directadmin.tar.gz
-tar -xzf /tmp/spamtroll-directadmin.tar.gz
+curl -fL https://spamtroll.io/download/spamtroll-directadmin.tar.gz -o "$archive"
+tar -xzf "$archive"
 ./scripts/install.sh
+)
 ```
 
 ## Configuration
@@ -121,10 +126,13 @@ under a container.
 
 ### CI gates
 
-Every push and pull request to `main` runs `.github/workflows/qa.yml`. That
-matters more here than in most repositories: the frontend image clones this
-branch at build time, so `main` *is* the release channel, and the plugin
-installs as root and sits in Exim's DATA path.
+Every push and pull request to `main` runs `.github/workflows/qa.yml`.
+The plugin installs as root and sits in Exim's DATA path. The frontend image
+fetches an explicitly versioned GitHub release and verifies its SHA-256;
+its deployed image serves the archive and matching version file under
+`/download/`. Publishing source to `main` alone does not update that channel.
+The deployed release is 1.1.3; changing it requires updating the frontend's
+release/checksum pins and deploying the verified image.
 
 The gates live in `tests/ci/` rather than in `run:` blocks, so each one can be
 reproduced locally with a single command:
@@ -155,21 +163,31 @@ logrotate against a temporary filesystem fixture. It requires Linux,
 `python3`, `logrotate`, and the `admin` user and `mail` group. DirectAdmin's
 rebuild command is stubbed; no mail service is restarted by the fixture.
 
-Production audit and update recommendation: [nawia, 2026-10-11](PRODUCTION-AUDIT-2026-10-11.md).
+Production audit and verified native update: [nawia, 2026-10-11](PRODUCTION-AUDIT-2026-10-11.md#deployment-addendum--2026-10-11-t-071).
 
 ## Updating
 
 ### Automatic
 
-If `version_url` is configured in `plugin.conf`, DirectAdmin will check for updates automatically and notify the admin.
+DirectAdmin periodically checks `version_url` from `plugin.conf` and shows
+available updates in Plugin Manager. The native update action downloads
+`update_url`, extracts it directly into the installed plugin directory and
+runs `scripts/update.sh`. Version 1.1.3 was deployed through this native
+mechanism on `nawia`; detection and the update action were verified. This
+verification did not add an unattended update schedule.
 
 ### Manual
 
 ```bash
+(
+set -eu
+archive=$(mktemp /tmp/spamtroll-directadmin.XXXXXX)
+trap 'rm -f "$archive"' EXIT
 cd /usr/local/directadmin/plugins/spamtroll
-curl -fL https://spamtroll.io/download/spamtroll-directadmin.tar.gz -o /tmp/spamtroll-directadmin.tar.gz
-tar -xzf /tmp/spamtroll-directadmin.tar.gz
+curl -fL https://spamtroll.io/download/spamtroll-directadmin.tar.gz -o "$archive"
+tar -xzf "$archive"
 ./scripts/update.sh
+)
 ```
 
 The update script preserves your configuration and creates a backup of the Exim ACL before overwriting.
