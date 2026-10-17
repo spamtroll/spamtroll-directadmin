@@ -1,13 +1,28 @@
 # Spamtroll native spam handling for DirectAdmin (post-scan verdict translation).
 #
 # Installed by the Spamtroll DirectAdmin plugin to
-# /etc/exim.acl_check_message.post.conf. Stock DirectAdmin exim.conf
-# pulls this file in at the END of the DATA ACL, after the
-# SpamAssassin/rspamd stage (/etc/exim/spamd.acl_smtp_data.conf).
-# That position is the whole point: the SA/rspamd stage runs
-# `remove_header X-Spam-Status` and then writes its own verdict, so a
-# native header added any earlier (in acl_check_message.pre.conf) would
-# be wiped there whenever the recipient uses SpamAssassin/rspamd.
+# /etc/exim.easy_spam_fighter/check_message.conf.custom.post, the stock
+# Easy Spam Fighter extension slot at the tail of its DATA ACL stage.
+# That position is the whole point, and it is load-bearing in both
+# directions:
+#
+# - AFTER the SpamAssassin/rspamd stage (/etc/exim/spamd.acl_smtp_data.conf):
+#   that stage runs `remove_header X-Spam-Status` and then writes its own
+#   verdict, so a native header added any earlier (in
+#   acl_check_message.pre.conf) would be wiped whenever the recipient
+#   uses SpamAssassin/rspamd.
+# - BEFORE the ClamAV stage (/etc/exim.clamav.conf): that stock file
+#   ends with a bare `accept` and documents itself as "MUST BE THE LAST
+#   .include_if_exists in acl_check_message". Anything included after it —
+#   including DirectAdmin's own /etc/exim.acl_check_message.post.conf
+#   slot — never executes (verified live on 2026-10-17: zero post.conf
+#   evaluations in `exim -d -bh`). This plugin therefore does NOT use
+#   that slot.
+#
+# Files matching *.custom.* in the easy_spam_fighter directory survive
+# `directadmin build exim_conf` (they are the documented admin-extension
+# mechanism; e.g. check_rcpt.mid.conf predates our install), so unlike
+# a hand edit of exim.conf this placement persists across rebuilds.
 #
 # What happens here, per message:
 # - Spamtroll says spam (scanner exit 1) and SA/rspamd did NOT already

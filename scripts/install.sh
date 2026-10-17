@@ -8,7 +8,7 @@
 # What it does:
 # 1. Installs the spamtroll-check script to /usr/local/bin/
 # 2. Creates the Exim ACL configuration in /etc/exim.acl_check_message.pre.conf
-# 3. Creates the post-scan verdict translation in /etc/exim.acl_check_message.post.conf
+# 3. Creates the post-scan verdict translation in /etc/exim.easy_spam_fighter/check_message.conf.custom.post
 #    (native X-Spam-Status, applied after SpamAssassin/rspamd)
 # 4. Creates the config file in plugin data directory (if not exists)
 # 5. Creates the log file /var/log/spamtroll.log
@@ -24,7 +24,9 @@ set -e
 # Paths
 PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
-EXIM_ACL_POST_FILE="/etc/exim.acl_check_message.post.conf"
+ESF_DIR="/etc/exim.easy_spam_fighter"
+ESF_CHECK_MESSAGE="$ESF_DIR/check_message.conf"
+EXIM_ACL_POST_FILE="$ESF_DIR/check_message.conf.custom.post"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 DATA_DIR="$PLUGIN_DIR/data"
 CONFIG_FILE="$DATA_DIR/spamtroll.conf"
@@ -152,14 +154,23 @@ else
 fi
 
 # Install post-scan verdict translation (native X-Spam-Status, applied
-# after SpamAssassin/rspamd — see exim/acl_check_message.post.conf).
+# after SpamAssassin/rspamd — see exim/check_message.conf.custom.post).
+# The Easy Spam Fighter stage pulls this file in through its documented
+# *.custom.post slot, which survives `directadmin build exim_conf`;
+# verify the slot exists so a future ESF layout change fails loudly
+# instead of silently leaving verdicts untranslated.
+if [[ ! -f "$ESF_CHECK_MESSAGE" ]] || ! grep -q 'custom\.post' "$ESF_CHECK_MESSAGE"; then
+    echo -e "${RED}Error: Easy Spam Fighter has no custom.post slot — refusing to install a verdict hook Exim would never run${NC}"
+    exit 1
+fi
+mkdir -p "$(dirname "$EXIM_ACL_POST_FILE")"
 if [[ -f "$EXIM_ACL_POST_FILE" ]]; then
     BACKUP_FILE="${EXIM_ACL_POST_FILE}.backup.$(date +%Y%m%d%H%M%S)"
     cp "$EXIM_ACL_POST_FILE" "$BACKUP_FILE"
     echo -e "${YELLOW}Backed up existing post-scan ACL to: $BACKUP_FILE${NC}"
 fi
-if [[ -f "$PLUGIN_DIR/exim/acl_check_message.post.conf" ]]; then
-    cp "$PLUGIN_DIR/exim/acl_check_message.post.conf" "$EXIM_ACL_POST_FILE"
+if [[ -f "$PLUGIN_DIR/exim/check_message.conf.custom.post" ]]; then
+    cp "$PLUGIN_DIR/exim/check_message.conf.custom.post" "$EXIM_ACL_POST_FILE"
     chmod 644 "$EXIM_ACL_POST_FILE"
     chown root:root "$EXIM_ACL_POST_FILE"
     echo -e "${GREEN}Installed: $EXIM_ACL_POST_FILE${NC}"

@@ -19,6 +19,11 @@ chmod 755 "$WORK"
 PLUGIN="$WORK/usr/local/directadmin/plugins/spamtroll"
 mkdir -p "$PLUGIN" "$WORK/usr/local/bin" "$WORK/etc/logrotate.d" "$WORK/var/log"
 cp -r "$REPO_DIR/scripts" "$REPO_DIR/exim" "$PLUGIN/"
+# Stand-in for the stock Easy Spam Fighter stage: all the lifecycle
+# scripts need from it is the *.custom.post slot their verdict hook
+# installs into. The slot check greps this file, so it must exist.
+mkdir -p "$WORK/etc/exim.easy_spam_fighter"
+printf '.include_if_exists /etc/exim.easy_spam_fighter/check_message.conf.custom.post\n' > "$WORK/etc/exim.easy_spam_fighter/check_message.conf"
 
 python3 - "$WORK" <<'PY'
 from pathlib import Path
@@ -27,7 +32,12 @@ root = Path(sys.argv[1])
 plugin = root / 'usr/local/directadmin/plugins/spamtroll'
 for path in [*plugin.joinpath('scripts').glob('*.sh'), plugin/'exim/spamtroll-logrotate']:
     text = path.read_text()
-    for prefix in ['/usr/local/directadmin', '/usr/local/bin', '/etc/exim.acl_check_message.pre.conf', '/etc/exim.acl_check_message.post.conf', '/etc/logrotate.d', '/var/log']:
+    # Single directory entry on purpose: the scripts derive both the
+    # verdict-hook path and the slot-check path from $ESF_DIR, so one
+    # rewrite covers both. Separate file entries would overlap as
+    # substrings (check_message.conf inside
+    # check_message.conf.custom.post) and prefix the longer one twice.
+    for prefix in ['/usr/local/directadmin', '/usr/local/bin', '/etc/exim.acl_check_message.pre.conf', '/etc/exim.easy_spam_fighter', '/etc/logrotate.d', '/var/log']:
         text = text.replace(prefix, str(root) + prefix)
     path.write_text(text)
 PY
@@ -65,8 +75,8 @@ assert_writable "$WORK/var/log/spamtroll/quota_skipped.log"
 grep -q 'preserved log entry' "$WORK/var/log/spamtroll.log"
 [[ "$(sha256sum "$PLUGIN/data/spamtroll.conf")" == "$CONFIG_HASH" ]]
 [[ "$(readlink "$WORK/usr/local/bin/spamtroll-check")" == "$PLUGIN/exim/spamtroll-check" ]]
-[[ -f "$WORK/etc/exim.acl_check_message.post.conf" ]]
-grep -q 'X-Spam-Status: Yes, spamtroll' "$WORK/etc/exim.acl_check_message.post.conf"
+[[ -f "$WORK/etc/exim.easy_spam_fighter/check_message.conf.custom.post" ]]
+grep -q 'X-Spam-Status: Yes, spamtroll' "$WORK/etc/exim.easy_spam_fighter/check_message.conf.custom.post"
 echo '  ok  update preserves configuration, old log and scanner symlink'
 
 bash "$PLUGIN/scripts/update.sh" > "$WORK/update-again.out"

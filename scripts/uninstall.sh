@@ -8,7 +8,7 @@
 # What it removes:
 # - /usr/local/bin/spamtroll-check
 # - /etc/exim.acl_check_message.pre.conf
-# - /etc/exim.acl_check_message.post.conf
+# - /etc/exim.easy_spam_fighter/check_message.conf.custom.post
 #
 # What it keeps (for potential reinstall):
 # - Plugin data directory with spamtroll.conf (your settings)
@@ -22,7 +22,9 @@ PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 DATA_DIR="$PLUGIN_DIR/data"
 CONFIG_FILE="$DATA_DIR/spamtroll.conf"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
-EXIM_ACL_POST_FILE="/etc/exim.acl_check_message.post.conf"
+ESF_DIR="/etc/exim.easy_spam_fighter"
+ESF_CHECK_MESSAGE="$ESF_DIR/check_message.conf"
+EXIM_ACL_POST_FILE="$ESF_DIR/check_message.conf.custom.post"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 LOG_FILE="/var/log/spamtroll.log"
 
@@ -93,9 +95,10 @@ else
 fi
 
 # Remove post-scan verdict translation. Same ownership logic as above:
-# /etc/exim.acl_check_message.post.conf is a stock DirectAdmin extension
-# point, so restore the admin's own rules when we backed them up, and
-# never leave a Spamtroll file behind after an uninstall.
+# check_message.conf.custom.post is the documented admin-extension slot,
+# so an admin may well have had their own rules there before install.sh
+# overwrote it — restore them from backup rather than deleting the slot,
+# and never leave a Spamtroll file behind after an uninstall.
 echo ""
 echo "Removing post-scan verdict translation..."
 if [[ -f "$EXIM_ACL_POST_FILE" ]]; then

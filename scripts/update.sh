@@ -17,7 +17,9 @@ trap 'echo "Spamtroll update FAILED at line $LINENO (exit $?). The plugin on dis
 # Paths
 PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
-EXIM_ACL_POST_FILE="/etc/exim.acl_check_message.post.conf"
+ESF_DIR="/etc/exim.easy_spam_fighter"
+ESF_CHECK_MESSAGE="$ESF_DIR/check_message.conf"
+EXIM_ACL_POST_FILE="$ESF_DIR/check_message.conf.custom.post"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 LOG_FILE="/var/log/spamtroll.log"
 QUOTA_LOG_DIR="/var/log/spamtroll"
@@ -77,13 +79,18 @@ fi
 # Update post-scan verdict translation (native X-Spam-Status).
 echo ""
 echo "Updating post-scan verdict translation..."
-if [[ -f "$PLUGIN_DIR/exim/acl_check_message.post.conf" ]]; then
+if [[ -f "$PLUGIN_DIR/exim/check_message.conf.custom.post" ]]; then
+    if [[ ! -f "$ESF_CHECK_MESSAGE" ]] || ! grep -q 'custom\.post' "$ESF_CHECK_MESSAGE"; then
+        echo -e "${RED}Error: Easy Spam Fighter has no custom.post slot — refusing to install a verdict hook Exim would never run${NC}"
+        exit 1
+    fi
+    mkdir -p "$(dirname "$EXIM_ACL_POST_FILE")"
     if [[ -f "$EXIM_ACL_POST_FILE" ]]; then
         BACKUP_FILE="${EXIM_ACL_POST_FILE}.backup.$(date +%Y%m%d%H%M%S)"
         cp "$EXIM_ACL_POST_FILE" "$BACKUP_FILE"
         echo -e "${YELLOW}Backed up existing post-scan ACL to: $BACKUP_FILE${NC}"
     fi
-    cp "$PLUGIN_DIR/exim/acl_check_message.post.conf" "$EXIM_ACL_POST_FILE"
+    cp "$PLUGIN_DIR/exim/check_message.conf.custom.post" "$EXIM_ACL_POST_FILE"
     chmod 644 "$EXIM_ACL_POST_FILE"
     chown root:root "$EXIM_ACL_POST_FILE"
     echo -e "${GREEN}Updated: $EXIM_ACL_POST_FILE${NC}"

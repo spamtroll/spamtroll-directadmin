@@ -86,7 +86,10 @@ Exim pre-hook (acl_check_message.pre.conf)
 SpamAssassin/rspamd stage   (wipes X-Spam-*, writes its own verdict)
      |
      v
-Exim post-hook (acl_check_message.post.conf, native X-Spam-Status)
+ESF custom.post hook (check_message.conf.custom.post, native X-Spam-Status)
+     |
+     v
+ClamAV stage   (terminal accept; nothing after it runs)
      |
      v
 Spamtroll API (RETVec + GPT analysis)
@@ -110,9 +113,13 @@ Two hooks make this work. The pre-scan hook
 (`exim/acl_check_message.pre.conf`) runs first and publishes the
 `X-Spamtroll-*` info headers. The SpamAssassin/rspamd stage in the
 middle wipes every `X-Spam-*` header, so the post-scan hook
-(`exim/acl_check_message.post.conf`) runs last and adds the native
+(`exim/check_message.conf.custom.post`, installed into the Easy Spam
+Fighter `*.custom.post` slot) runs after it and adds the native
 `X-Spam-Status: Yes` only when Spamtroll said spam and nobody else
-flagged the message yet.
+flagged the message yet. The slot sits before the ClamAV stage, whose
+stock file ends the DATA ACL with a bare `accept` — that is why the
+hook cannot live in DirectAdmin's own `acl_check_message.post.conf`
+slot, which never executes (verified live).
 
 Anything that is not a verdict — API outage, exhausted quota, HTTP
 error, missing script — leaves the message with no `X-Spamtroll-*`
@@ -239,7 +246,7 @@ cd /usr/local/directadmin/plugins/spamtroll
 **Removed:**
 - `/usr/local/bin/spamtroll-check`
 - `/etc/exim.acl_check_message.pre.conf`
-- `/etc/exim.acl_check_message.post.conf`
+- `/etc/exim.easy_spam_fighter/check_message.conf.custom.post`
 
 **Preserved (for potential reinstall):**
 - Configuration file (`data/spamtroll.conf`)
@@ -270,7 +277,7 @@ during installation or update without removing existing entries.
 
 **Emails are not being checked**
 - Ensure `ENABLED=true` and `API_KEY` is set in the config file
-- Verify both Exim ACL files exist: `ls -la /etc/exim.acl_check_message.pre.conf /etc/exim.acl_check_message.post.conf`
+- Verify both Exim ACL files exist: `ls -la /etc/exim.acl_check_message.pre.conf /etc/exim.easy_spam_fighter/check_message.conf.custom.post`
 - Check that `spamtroll-check` is installed: `which spamtroll-check`
 - Rebuild Exim config: `cd /usr/local/directadmin && ./directadmin build exim_conf`
 
@@ -297,7 +304,7 @@ during installation or update without removing existing entries.
 |   `-- cache/               # Stats cache
 |-- exim/
 |   |-- acl_check_message.pre.conf   # Pre-scan hook (X-Spamtroll-* headers)
-|   |-- acl_check_message.post.conf  # Post-scan hook (native X-Spam-Status)
+|   |-- check_message.conf.custom.post  # Post-scan hook (native X-Spam-Status)
 |   |-- spamtroll-check      # Email check script
 |   `-- spamtroll-logrotate  # Logrotate config
 |-- hooks/

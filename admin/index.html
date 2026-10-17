@@ -1104,11 +1104,11 @@ if ($action === 'export' && ($_GET['format'] ?? '') === 'csv') {
                 </tr>
                 <tr>
                     <td><strong>Exim ACL (native verdict)</strong></td>
-                    <td>/etc/exim.acl_check_message.post.conf</td>
+                    <td>/etc/exim.easy_spam_fighter/check_message.conf.custom.post</td>
                     <td>
-                        <?php if (file_exists('/etc/exim.acl_check_message.post.conf')): ?>
+                        <?php if (file_exists('/etc/exim.easy_spam_fighter/check_message.conf.custom.post')): ?>
                         <span class="status-badge status-enabled">CONFIGURED</span>
-                        <span style="font-size: 12px; color: var(--gray-600); margin-left: 8px;"><?= fileInfo('/etc/exim.acl_check_message.post.conf') ?></span>
+                        <span style="font-size: 12px; color: var(--gray-600); margin-left: 8px;"><?= fileInfo('/etc/exim.easy_spam_fighter/check_message.conf.custom.post') ?></span>
                         <?php else: ?>
                         <span class="status-badge status-disabled">MISSING</span>
                         <?php endif; ?>
