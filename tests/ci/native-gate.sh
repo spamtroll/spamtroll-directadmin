@@ -25,7 +25,10 @@
 #
 # The fake SA stage mirrors the stock DA behavior it stands in for
 # (/etc/exim/spamd.acl_smtp_data.conf): unconditional
-# `remove_header X-Spam-*`, then `X-Spam-Status: Yes` on spam only.
+# `remove_header X-Spam-*`, then `acl_m_is_spam = 1` plus
+# `X-Spam-Status: Yes` on spam only. The variable assignment is the
+# load-bearing part: in-ACL add_header output is invisible to $h_ in
+# the same run, so the post hook must read the variable, not the header.
 #
 # Needs Exim. All fixtures live in a temporary directory; the installed
 # scanner is never overwritten. Staging into a world-readable temp dir
@@ -96,7 +99,7 @@ write_harness() {  # sa mode: spam | ham | off
         if [[ "$sa" != "off" ]]; then
             printf '  warn\n    remove_header = X-Spam-Bar : X-Spam-Score : X-Spam-Report : X-Spam-Status\n'
             if [[ "$sa" == "spam" ]]; then
-                printf '  warn\n    add_header = X-Spam-Status: Yes, score=15.0\n'
+                printf '  warn\n    set acl_m_is_spam = 1\n    add_header = X-Spam-Status: Yes, score=15.0\n'
             fi
         fi
         printf '  .include %s/post.conf\n' "$WORKDIR"
