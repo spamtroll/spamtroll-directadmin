@@ -97,7 +97,19 @@ on them with Sieve, Procmail or IMAP filters. Anything that is not a
 verdict — API outage, exhausted quota, HTTP error, missing script —
 leaves the message with no `X-Spamtroll-*` header at all, rather than
 claiming it is clean. Losing correspondence to a filter outage is worse
-than letting spam through.
+than letting spam through. Mark-only is the permanent architecture:
+there is no blocking mode and none is planned.
+
+Minimal Sieve example (DirectAdmin → E-Mail Manager → SPAM Filters, or
+`~/.dovecot.sieve` per mailbox):
+
+```sieve
+require ["fileinto"];
+
+if header :is "X-Spamtroll-Status" "spam" {
+    fileinto "Spam";
+}
+```
 
 Authenticated SMTP submissions and mail injected over loopback
 (Roundcube, `sendmail`, cron) are not sent to Spamtroll. They still go

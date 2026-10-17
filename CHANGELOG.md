@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Mark-only verdicts are now the permanent architecture, not an observation mode. The Exim ACL only adds `X-Spamtroll-Status`/`X-Spamtroll-Score` headers and never rejects or defers a message; each mailbox owner decides via Sieve/Procmail/IMAP filters. The planned future `deny` rule is removed.
+
 ## [1.1.3] - 2026-10-11
 
 ### Fixed
