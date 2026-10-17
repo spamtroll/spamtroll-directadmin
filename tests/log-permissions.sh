@@ -27,7 +27,7 @@ root = Path(sys.argv[1])
 plugin = root / 'usr/local/directadmin/plugins/spamtroll'
 for path in [*plugin.joinpath('scripts').glob('*.sh'), plugin/'exim/spamtroll-logrotate']:
     text = path.read_text()
-    for prefix in ['/usr/local/directadmin', '/usr/local/bin', '/etc/exim.acl_check_message.pre.conf', '/etc/logrotate.d', '/var/log']:
+    for prefix in ['/usr/local/directadmin', '/usr/local/bin', '/etc/exim.acl_check_message.pre.conf', '/etc/exim.acl_check_message.post.conf', '/etc/logrotate.d', '/var/log']:
         text = text.replace(prefix, str(root) + prefix)
     path.write_text(text)
 PY
@@ -65,6 +65,8 @@ assert_writable "$WORK/var/log/spamtroll/quota_skipped.log"
 grep -q 'preserved log entry' "$WORK/var/log/spamtroll.log"
 [[ "$(sha256sum "$PLUGIN/data/spamtroll.conf")" == "$CONFIG_HASH" ]]
 [[ "$(readlink "$WORK/usr/local/bin/spamtroll-check")" == "$PLUGIN/exim/spamtroll-check" ]]
+[[ -f "$WORK/etc/exim.acl_check_message.post.conf" ]]
+grep -q 'X-Spam-Status: Yes, spamtroll' "$WORK/etc/exim.acl_check_message.post.conf"
 echo '  ok  update preserves configuration, old log and scanner symlink'
 
 bash "$PLUGIN/scripts/update.sh" > "$WORK/update-again.out"

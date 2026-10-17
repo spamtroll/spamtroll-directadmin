@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Mark-only verdicts are now the permanent architecture, not an observation mode. The Exim ACL only adds `X-Spamtroll-Status`/`X-Spamtroll-Score` headers and never rejects or defers a message; each mailbox owner decides via Sieve/Procmail/IMAP filters. The planned future `deny` rule is removed.
+- Mark-only verdicts are now the permanent architecture, not an observation mode. The Exim hooks only add headers and never reject or defer a message; the planned future `deny` rule is removed.
+- Native DirectAdmin spam handling: a `blocked` verdict is translated into `X-Spam-Status: Yes` by a new post-scan hook (`exim/acl_check_message.post.conf`, installed to `/etc/exim.acl_check_message.post.conf`), so DirectAdmin files flagged mail into the user's Spam folder with no user configuration — like SpamAssassin/rspamd verdicts, next to them, and never downgrading them. `suspicious` stays visible as `X-Spamtroll-Status` for optional Sieve rules only.
 
 ## [1.1.3] - 2026-10-11
 

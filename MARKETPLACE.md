@@ -24,7 +24,7 @@ The Spamtroll DirectAdmin plugin provides incoming-email spam scoring and Exim v
 
 **Full description:** Spamtroll integrates with Exim's DATA ACL to analyse incoming email using the Spamtroll service. The service combines reputation, rules and configured machine-learning/AI stages. The plugin adds `X-Spamtroll-Status` and `X-Spamtroll-Score` headers when a valid verdict is available. Administrators can configure the API key, enable scanning, manage lists, test connectivity and inspect recent activity.
 
-The plugin itself never rejects or defers messages, including messages classified as spam. Mail routing based on its headers is configured separately by the customer. API errors, exhausted quota and missing verdicts leave messages without Spamtroll headers; they are not falsely marked clean. Authenticated SMTP and loopback submissions are skipped. This plugin does not replace the rest of DirectAdmin's mail security checks.
+The plugin itself never rejects or defers messages, including messages classified as spam. Messages it flags as spam get the native `X-Spam-Status: Yes` header (like SpamAssassin/rspamd verdicts), so DirectAdmin files them into the user's Spam folder with no customer configuration. API errors, exhausted quota and missing verdicts leave messages without Spamtroll headers; they are not falsely marked clean. Authenticated SMTP and loopback submissions are skipped. This plugin does not replace the rest of DirectAdmin's mail security checks.
 
 The plugin software uses the MIT license. The hosted scanning service requires an account and API key; do not describe the service as unlimited or free without checking the current published plan. No availability, accuracy or independent certification claims are made by this draft.
 

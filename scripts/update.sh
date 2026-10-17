@@ -17,6 +17,7 @@ trap 'echo "Spamtroll update FAILED at line $LINENO (exit $?). The plugin on dis
 # Paths
 PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
+EXIM_ACL_POST_FILE="/etc/exim.acl_check_message.post.conf"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 LOG_FILE="/var/log/spamtroll.log"
 QUOTA_LOG_DIR="/var/log/spamtroll"
@@ -69,6 +70,23 @@ if [[ -f "$PLUGIN_DIR/exim/acl_check_message.pre.conf" ]]; then
     chmod 644 "$EXIM_ACL_FILE"
     chown root:root "$EXIM_ACL_FILE"
     echo -e "${GREEN}Updated: $EXIM_ACL_FILE${NC}"
+else
+    echo -e "${YELLOW}Warning: Source file not found, skipping${NC}"
+fi
+
+# Update post-scan verdict translation (native X-Spam-Status).
+echo ""
+echo "Updating post-scan verdict translation..."
+if [[ -f "$PLUGIN_DIR/exim/acl_check_message.post.conf" ]]; then
+    if [[ -f "$EXIM_ACL_POST_FILE" ]]; then
+        BACKUP_FILE="${EXIM_ACL_POST_FILE}.backup.$(date +%Y%m%d%H%M%S)"
+        cp "$EXIM_ACL_POST_FILE" "$BACKUP_FILE"
+        echo -e "${YELLOW}Backed up existing post-scan ACL to: $BACKUP_FILE${NC}"
+    fi
+    cp "$PLUGIN_DIR/exim/acl_check_message.post.conf" "$EXIM_ACL_POST_FILE"
+    chmod 644 "$EXIM_ACL_POST_FILE"
+    chown root:root "$EXIM_ACL_POST_FILE"
+    echo -e "${GREEN}Updated: $EXIM_ACL_POST_FILE${NC}"
 else
     echo -e "${YELLOW}Warning: Source file not found, skipping${NC}"
 fi

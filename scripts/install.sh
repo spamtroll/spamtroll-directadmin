@@ -8,9 +8,11 @@
 # What it does:
 # 1. Installs the spamtroll-check script to /usr/local/bin/
 # 2. Creates the Exim ACL configuration in /etc/exim.acl_check_message.pre.conf
-# 3. Creates the config file in plugin data directory (if not exists)
-# 4. Creates the log file /var/log/spamtroll.log
-# 5. Restarts Exim to apply the ACL changes
+# 3. Creates the post-scan verdict translation in /etc/exim.acl_check_message.post.conf
+#    (native X-Spam-Status, applied after SpamAssassin/rspamd)
+# 4. Creates the config file in plugin data directory (if not exists)
+# 5. Creates the log file /var/log/spamtroll.log
+# 6. Restarts Exim to apply the ACL changes
 #
 # Requirements:
 # - jq (for JSON parsing)
@@ -22,6 +24,7 @@ set -e
 # Paths
 PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
+EXIM_ACL_POST_FILE="/etc/exim.acl_check_message.post.conf"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 DATA_DIR="$PLUGIN_DIR/data"
 CONFIG_FILE="$DATA_DIR/spamtroll.conf"
@@ -145,6 +148,23 @@ if [[ -f "$PLUGIN_DIR/exim/acl_check_message.pre.conf" ]]; then
     echo -e "${GREEN}Installed: $EXIM_ACL_FILE${NC}"
 else
     echo -e "${RED}Error: ACL config not found in plugin directory${NC}"
+    exit 1
+fi
+
+# Install post-scan verdict translation (native X-Spam-Status, applied
+# after SpamAssassin/rspamd — see exim/acl_check_message.post.conf).
+if [[ -f "$EXIM_ACL_POST_FILE" ]]; then
+    BACKUP_FILE="${EXIM_ACL_POST_FILE}.backup.$(date +%Y%m%d%H%M%S)"
+    cp "$EXIM_ACL_POST_FILE" "$BACKUP_FILE"
+    echo -e "${YELLOW}Backed up existing post-scan ACL to: $BACKUP_FILE${NC}"
+fi
+if [[ -f "$PLUGIN_DIR/exim/acl_check_message.post.conf" ]]; then
+    cp "$PLUGIN_DIR/exim/acl_check_message.post.conf" "$EXIM_ACL_POST_FILE"
+    chmod 644 "$EXIM_ACL_POST_FILE"
+    chown root:root "$EXIM_ACL_POST_FILE"
+    echo -e "${GREEN}Installed: $EXIM_ACL_POST_FILE${NC}"
+else
+    echo -e "${RED}Error: post-scan ACL config not found in plugin directory${NC}"
     exit 1
 fi
 

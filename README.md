@@ -77,36 +77,56 @@ cd /usr/local/directadmin && ./directadmin build exim_conf
 Incoming Email
      |
      v
-Exim ACL (acl_check_message.pre.conf)
+Exim pre-hook (acl_check_message.pre.conf)
      |
      v
 /usr/local/bin/spamtroll-check   (headers from the ACL, body from the spool)
      |
      v
+SpamAssassin/rspamd stage   (wipes X-Spam-*, writes its own verdict)
+     |
+     v
+Exim post-hook (acl_check_message.post.conf, native X-Spam-Status)
+     |
+     v
 Spamtroll API (RETVec + GPT analysis)
      |
-     +---> blocked     ---> ACCEPT + X-Spamtroll-Status: spam       + X-Spamtroll-Score
-     +---> suspicious  ---> ACCEPT + X-Spamtroll-Status: suspicious + X-Spamtroll-Score
-     +---> safe        ---> ACCEPT + X-Spamtroll-Status: clean      + X-Spamtroll-Score
+     +---> blocked     ---> ACCEPT + X-Spamtroll-Status: spam, X-Spam-Status: Yes (native)
+     +---> suspicious  ---> ACCEPT + X-Spamtroll-Status: suspicious (Sieve-optional)
+     +---> safe        ---> ACCEPT + X-Spamtroll-Status: clean
      +---> no verdict  ---> ACCEPT, no header at all
 ```
 
-**The plugin never rejects or defers a message.** The ACL contains no
-`deny` and no `defer`: verdicts are published as headers and users route
-on them with Sieve, Procmail or IMAP filters. Anything that is not a
-verdict — API outage, exhausted quota, HTTP error, missing script —
-leaves the message with no `X-Spamtroll-*` header at all, rather than
-claiming it is clean. Losing correspondence to a filter outage is worse
-than letting spam through. Mark-only is the permanent architecture:
-there is no blocking mode and none is planned.
+**The plugin never rejects or defers a message.** Mark-only is the
+permanent architecture: there is no blocking mode and none is planned.
+Instead a `blocked` verdict is translated into the native
+`X-Spam-Status: Yes` header, exactly like SpamAssassin/rspamd do, so
+DirectAdmin handles it with its own machinery — the per-domain filter
+files it into the user's Spam folder, autoresponders skip it. No user
+configuration is needed; it works next to SpamAssassin/rspamd, and an
+SA/rspamd `Yes` is never downgraded.
 
-Minimal Sieve example (DirectAdmin → E-Mail Manager → SPAM Filters, or
-`~/.dovecot.sieve` per mailbox):
+Two hooks make this work. The pre-scan hook
+(`exim/acl_check_message.pre.conf`) runs first and publishes the
+`X-Spamtroll-*` info headers. The SpamAssassin/rspamd stage in the
+middle wipes every `X-Spam-*` header, so the post-scan hook
+(`exim/acl_check_message.post.conf`) runs last and adds the native
+`X-Spam-Status: Yes` only when Spamtroll said spam and nobody else
+flagged the message yet.
+
+Anything that is not a verdict — API outage, exhausted quota, HTTP
+error, missing script — leaves the message with no `X-Spamtroll-*`
+header at all, rather than claiming it is clean. Losing correspondence
+to a filter outage is worse than letting spam through.
+
+A `suspicious` verdict is deliberately not mapped to anything native;
+it stays visible as `X-Spamtroll-Status: suspicious` for optional
+user-side Sieve rules:
 
 ```sieve
 require ["fileinto"];
 
-if header :is "X-Spamtroll-Status" "spam" {
+if header :is "X-Spamtroll-Status" "suspicious" {
     fileinto "Spam";
 }
 ```
@@ -219,6 +239,7 @@ cd /usr/local/directadmin/plugins/spamtroll
 **Removed:**
 - `/usr/local/bin/spamtroll-check`
 - `/etc/exim.acl_check_message.pre.conf`
+- `/etc/exim.acl_check_message.post.conf`
 
 **Preserved (for potential reinstall):**
 - Configuration file (`data/spamtroll.conf`)
@@ -249,7 +270,7 @@ during installation or update without removing existing entries.
 
 **Emails are not being checked**
 - Ensure `ENABLED=true` and `API_KEY` is set in the config file
-- Verify the Exim ACL file exists: `ls -la /etc/exim.acl_check_message.pre.conf`
+- Verify both Exim ACL files exist: `ls -la /etc/exim.acl_check_message.pre.conf /etc/exim.acl_check_message.post.conf`
 - Check that `spamtroll-check` is installed: `which spamtroll-check`
 - Rebuild Exim config: `cd /usr/local/directadmin && ./directadmin build exim_conf`
 
@@ -275,7 +296,8 @@ during installation or update without removing existing entries.
 |   |-- spamtroll.conf       # Runtime configuration
 |   `-- cache/               # Stats cache
 |-- exim/
-|   |-- acl_check_message.pre.conf  # Exim ACL rules
+|   |-- acl_check_message.pre.conf   # Pre-scan hook (X-Spamtroll-* headers)
+|   |-- acl_check_message.post.conf  # Post-scan hook (native X-Spam-Status)
 |   |-- spamtroll-check      # Email check script
 |   `-- spamtroll-logrotate  # Logrotate config
 |-- hooks/

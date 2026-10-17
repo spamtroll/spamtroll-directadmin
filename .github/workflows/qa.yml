@@ -217,6 +217,13 @@ jobs:
       - name: ACL syntax, fail-open policy and execution
         run: sudo -E ./tests/ci/acl-gate.sh
 
+      # Same Exim harness needs: stages the pre hook, a fake
+      # SpamAssassin/rspamd stage and the post hook, then proves the
+      # native X-Spam-Status mapping never stops mail, never fights
+      # SA/rspamd and never invents a verdict.
+      - name: Native X-Spam-Status mapping
+        run: sudo -E ./tests/ci/native-gate.sh
+
   package:
     name: Package
     runs-on: ubuntu-latest

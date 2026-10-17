@@ -8,6 +8,7 @@
 # What it removes:
 # - /usr/local/bin/spamtroll-check
 # - /etc/exim.acl_check_message.pre.conf
+# - /etc/exim.acl_check_message.post.conf
 #
 # What it keeps (for potential reinstall):
 # - Plugin data directory with spamtroll.conf (your settings)
@@ -21,6 +22,7 @@ PLUGIN_DIR="/usr/local/directadmin/plugins/spamtroll"
 DATA_DIR="$PLUGIN_DIR/data"
 CONFIG_FILE="$DATA_DIR/spamtroll.conf"
 EXIM_ACL_FILE="/etc/exim.acl_check_message.pre.conf"
+EXIM_ACL_POST_FILE="/etc/exim.acl_check_message.post.conf"
 SPAMTROLL_BIN="/usr/local/bin/spamtroll-check"
 LOG_FILE="/var/log/spamtroll.log"
 
@@ -88,6 +90,37 @@ if [[ -f "$EXIM_ACL_FILE" ]]; then
     fi
 else
     echo -e "${YELLOW}Not found: $EXIM_ACL_FILE (skipping)${NC}"
+fi
+
+# Remove post-scan verdict translation. Same ownership logic as above:
+# /etc/exim.acl_check_message.post.conf is a stock DirectAdmin extension
+# point, so restore the admin's own rules when we backed them up, and
+# never leave a Spamtroll file behind after an uninstall.
+echo ""
+echo "Removing post-scan verdict translation..."
+if [[ -f "$EXIM_ACL_POST_FILE" ]]; then
+    if grep -q "Spamtroll" "$EXIM_ACL_POST_FILE" 2>/dev/null; then
+        ORIGINAL_POST_ACL=""
+        for backup in "${EXIM_ACL_POST_FILE}".backup.*; do
+            [[ -f "$backup" ]] || continue
+            grep -q "Spamtroll" "$backup" 2>/dev/null && continue
+            ORIGINAL_POST_ACL="$backup"
+        done
+
+        if [[ -n "$ORIGINAL_POST_ACL" ]]; then
+            cp "$ORIGINAL_POST_ACL" "$EXIM_ACL_POST_FILE"
+            chmod 644 "$EXIM_ACL_POST_FILE"
+            chown root:root "$EXIM_ACL_POST_FILE"
+            echo -e "${GREEN}Restored pre-install post-scan ACL from: $ORIGINAL_POST_ACL${NC}"
+        else
+            rm -f "$EXIM_ACL_POST_FILE"
+            echo -e "${GREEN}Removed: $EXIM_ACL_POST_FILE${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Warning: post-scan ACL file exists but was modified. Keeping for safety.${NC}"
+    fi
+else
+    echo -e "${YELLOW}Not found: $EXIM_ACL_POST_FILE (skipping)${NC}"
 fi
 
 # Remove logrotate config
