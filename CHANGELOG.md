@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-19
+
+### Added
+- Spamtroll spam verdicts add `X-Spam-Status: Yes` so enabled DirectAdmin spam filters can route flagged messages using their existing policy. Existing SpamAssassin and rspamd spam verdicts are preserved. Suspicious verdicts remain available in `X-Spamtroll-Status`.
+
 ### Changed
-- Mark-only verdicts are now the permanent architecture, not an observation mode. The Exim hooks only add headers and never reject or defer a message; the planned future `deny` rule is removed.
-- Native DirectAdmin spam handling: a `blocked` verdict is translated into `X-Spam-Status: Yes` by a new post-scan hook (`exim/check_message.conf.custom.post`, installed to `/etc/exim.easy_spam_fighter/check_message.conf.custom.post`), so DirectAdmin files flagged mail into the user's Spam folder with no user configuration — like SpamAssassin/rspamd verdicts, next to them, and never downgrading them. `suspicious` stays visible as `X-Spamtroll-Status` for optional Sieve rules only.
-- Hook placement, corrected: the hook first shipped in DirectAdmin's own `acl_check_message.post.conf` slot, which never executes — the stock ClamAV stage ends the DATA ACL with a bare `accept` and must stay last (proven live with `exim -d -bh`). The hook now lives in the Easy Spam Fighter `*.custom.post` slot (after SA/rspamd, before ClamAV), which also survives `directadmin build exim_conf`; install/update refuse to deploy when the slot is absent, and the CI gate stages a terminal `accept` to pin the ordering.
+- Spamtroll marks messages with verdict headers without rejecting or deferring mail.
+- Install and update place the native marking hook in the Easy Spam Fighter post-scan slot, after SpamAssassin or rspamd and before ClamAV can finish the DATA ACL. Installation and updates verify that this slot is available.
 
 ## [1.1.3] - 2026-10-11
 

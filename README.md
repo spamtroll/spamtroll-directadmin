@@ -170,8 +170,8 @@ The plugin installs as root and sits in Exim's DATA path. The frontend image
 fetches an explicitly versioned GitHub release and verifies its SHA-256;
 its deployed image serves the archive and matching version file under
 `/download/`. Publishing source to `main` alone does not update that channel.
-The deployed release is 1.1.3; changing it requires updating the frontend's
-release/checksum pins and deploying the verified image.
+The public version is listed in the [update channel version file](https://spamtroll.io/download/spamtroll-directadmin.version).
+Publishing an update requires changing the frontend’s release and checksum pins and deploying the verified image.
 
 The gates live in `tests/ci/` rather than in `run:` blocks, so each one can be
 reproduced locally with a single command:
